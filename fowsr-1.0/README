@@ -44,12 +44,11 @@ Current status:
 	- Reads all weather station data, not all data is decoded or used.
 	- No writing of data, this must be performed using EasyWeather application
 	  or console display.
-	- Tested on OpenWrt, an embedded Linux 
+	- Tested on OpenWrt, an embedded Linux distro
 	- Device gets claimed by the kernel usbhid driver, try running
 	  this program as root if you have problems to give it 
 	  permissions to detach the attached drivers on startup.
 
 TODO:
 	- More log formats
-	- OpenWrt Makefile
 

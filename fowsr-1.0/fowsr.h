@@ -121,7 +121,7 @@ struct wug_record {
 	// ID [ID as registered by wunderground.com]
 	// PASSWORD [PASSWORD registered with this ID]
 	// dateutc - [YYYY-MM-DD HH:MM:SS (mysql format)]
-	{"winddir"      , 12, ub,   22.5,       0.0},	// - [0-360]
+	{"winddir"      , 12, ub,   1.0,        0.0},	// - [0-360]
 	{"windspeedmph" ,  9, wa,   2.2369363,  0.0},	// - [mph]
 	{"windgustmph"  , 10, wg,   2.2369363,  0.0},	// - [windgustmph]
 	{"humidity"     ,  4, ub,   1.0,        0.0},	// - [%]

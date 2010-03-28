@@ -4,8 +4,8 @@
 
 wsr=/usr/bin/uwws -p
 LOG=/var/pywws.log
-UID=<uid>
-PWD=<pwd>
+UID=$1
+PWD=$2
 
 WPUT="$LOG ftp://$UID:$PWD@<www.myser.com>/<mypath>"
 

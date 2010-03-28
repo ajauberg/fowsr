@@ -1,23 +1,19 @@
 /*  Fine Offset Weather Station Reader
 
- This application reads WH1080 compatible devices using the USB port.
- Compatible with all USB stations that can use the EasyWeather app (www.foshk.com)
+   (C) Arne-Jørgen Auberg (arne.jorgen.auberg@gmail.com)
 
+   This application reads WH1080 compatible devices using the USB port.
+   Compatible with all USB stations that can use the EasyWeather app (www.foshk.com)
 
- This file is generated with usbsnoop2libusb.pl from a usbsnoop log file.
- Latest version of the script should be in http://iki.fi/lindi/usb/usbsnoop2libusb.pl
+   The application is generated with inspiration from the following projects:
 
- * wwsr - Wireless Weather Station Reader
- * 2007 dec 19, Michael Pendec (michael.pendec@gmail.com)
- * Version 0.5
- * 2008 jan 24 Svend Skafte (svend@skafte.net)
- * 2008 sep 28 Adam Pribyl (covex@lowlevel.cz)
- * Modifications for different firmware version(?)
- 
- WeatherStation.py - get data from WH1080 compatible weather stations
+  1)	WeatherStation.py - The pywws poject. http://pywws.googlecode.com
 
- Derived from wwsr.c by Michael Pendec (michael.pendec@gmail.com) and
- wwsrdump.c by Svend Skafte (svend@skafte.net), modified by Dave Wells.
+  2)	usbsnoop2libusb.pl - The usbsnoop log file.
+	The latest version of the script should be in http://iki.fi/lindi/usb/usbsnoop2libusb.pl
+
+  3)	wwsr.c - Wireless Weather Station Reader
+	Michael Pendec (michael.pendec@gmail.com)
 */
 
 #include <stdio.h>
@@ -268,8 +264,8 @@ int CWS_Write(char arg,char* fname)
 			switch (arg) {
 				case 'p':
 					// Save in pywws raw format
-					n=strftime(s1,100,"%Y-%m-%d %H:%M", gmtime(&timestamp));
-					for (j=1;j<11;j++) {
+					n=strftime(s1,100,"%Y-%m-%d %H:%M:%S", gmtime(&timestamp));
+					for (j=0;j<11;j++) {
 						strcat(s1,",");
 		
 						CWS_decode(&m_buf[current_pos+ws_format[j].pos],

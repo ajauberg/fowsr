@@ -6,8 +6,8 @@ WGET=http://weatherstation.wunderground.com/weatherstation/updateweatherstation.
 
 wsr=/usr/bin/fowsr -w
 LOG=/var/wunderground.log
-ID=<ID>
-PASSWORD=<PASSWORD>
+ID=$1
+PASSWORD=$2
 
 WGET="$WGET?action=updateraw&ID=$ID&PASSWORD=$PASSWORD&"
 
