@@ -52,7 +52,7 @@ struct ws_record {
 	{"wind_ave"     ,  9, wa,  0.1}, // Multiply by 0.1 to get m/s
 	{"wind_gust"    , 10, wg,  0.1}, // Multiply by 0.1 to get m/s
 	// 11, wind speed, high bits     // Lower 4 bits are the average wind speed high bits, upper 4 bits are the gust wind speed high bits.
-	{"wind_dir"     , 12, ub, 22.5}, // Multiply by 22.5 to get ° from north
+	{"wind_dir"     , 12, ub,  1.0}, // Multiply by 22.5 to get ° from north
 	{"rain"         , 13, us,  0.3}, // Multiply by 0.3 to get mm
 	{"status"       , 15, pb,  1.0}, // 7th bit indicates loss of contact with sensors
 // The lower fixed block
@@ -121,7 +121,7 @@ struct wug_record {
 	// ID [ID as registered by wunderground.com]
 	// PASSWORD [PASSWORD registered with this ID]
 	// dateutc - [YYYY-MM-DD HH:MM:SS (mysql format)]
-	{"winddir"      , 12, ub,   1.0,        0.0},	// - [0-360]
+	{"winddir"      , 12, ub,  22.5,        0.0},	// - [0-360]
 	{"windspeedmph" ,  9, wa,   2.2369363,  0.0},	// - [mph]
 	{"windgustmph"  , 10, wg,   2.2369363,  0.0},	// - [windgustmph]
 	{"humidity"     ,  4, ub,   1.0,        0.0},	// - [%]
