@@ -2,17 +2,18 @@
 
 # Call fowsr and upload data to Wunderground
 
-WGET=http://weatherstation.wunderground.com/weatherstation/updateweatherstation.php
-
 wsr=/usr/bin/fowsr -w
 LOG=/var/wunderground.log
 ID=$1
 PASSWORD=$2
 
-WGET="$WGET?action=updateraw&ID=$ID&PASSWORD=$PASSWORD&"
+WGET=http://weatherstation.wunderground.com/weatherstation/updateweatherstation.php
+
+WGET="$WGET?action=updateraw&ID=$ID&PASSWORD=$PASSWORD&softwaretype=fowsr&"
 
 rm -f $LOG
 $wsr
+
 while read line
 do
   WGET2="$WGET`echo $line`"
