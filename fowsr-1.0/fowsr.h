@@ -1,4 +1,6 @@
-/* Header file
+/* Fine Offset Weather Station Reader - Header file
+
+   (C) Arne-Jørgen Auberg (arne.jorgen.auberg@gmail.com)
 
   - Wireless Weather Station Data Block Definition
   - Wireless Weather Station Record Format Definition
@@ -24,15 +26,21 @@
 // Each key specifies a (pos, type, scale) tuple that is understood by decode().
 // See http://www.jim-easterbrook.me.uk/weather/mm/ for description of data
 
-#define WS_BUFFER_SIZE		0x10000	// Size of total buffer
+#define WS_BUFFER_SIZE		0x10010	// Size of total buffer
 #define WS_BUFFER_START		0x100	// Size of fixed block, start of up to 4080 buffer records
 #define WS_BUFFER_END		0xFFF0	// Last buffer record
 #define WS_BUFFER_RECORD	0x10	// Size of one buffer record
 #define WS_BUFFER_CHUNK		0x20	// Size of chunk received over USB
 
 #define WS_DELAY		0	// Position of delay parameter
+#define WS_RAIN			13	// Position of rain parameter
 #define WS_DATA_COUNT		27	// Position of data_count parameter
 #define WS_CURRENT_POS		30	// Position of current_pos parameter
+
+#define WS_RAIN_HOUR		0x10000	// Position of hourly calculated rain
+#define WS_RAIN_DAY		0x10002	// Position of daily calculated rain
+#define WS_RAIN_WEEK		0x10004	// Position of weekly calculated rain
+#define WS_RAIN_MONTH		0x10006	// Position of monthly calculated rain
 
 enum ws_types {ub,sb,us,ss,dt,tt,pb,wa,wg};
 
@@ -101,7 +109,12 @@ struct ws_record {
 	{"min.windchill.val"    , 112, ss, 0.1}, {"min.windchill.date"    , 186, dt, 1.0}, // Multiply by 0.1 to get °C
 	{"min.dewpoint.val"     , 116, ss, 0.1}, {"min.dewpoint.date"     , 196, dt, 1.0}, // Multiply by 0.1 to get °C
 	{"min.abs_pressure.val" , 120, us, 0.1}, {"min.abs_pressure.date" , 206, dt, 1.0}, // Multiply by 0.1 to get hPa
-	{"min.rel_pressure.val" , 124, us, 0.1}, {"min.rel_pressure.date" , 216, dt, 1.0}  // Multiply by 0.1 to get hPa
+	{"min.rel_pressure.val" , 124, us, 0.1}, {"min.rel_pressure.date" , 216, dt, 1.0}, // Multiply by 0.1 to get hPa
+// Calculated rainfall, must be callculated prior to every record
+	{"rain.hour"    , WS_RAIN_HOUR , us, 0.3}, // Multiply by 0.3 to get mm
+	{"rain.day"     , WS_RAIN_DAY  , us, 0.3}, // Multiply by 0.3 to get mm
+	{"rain.week"    , WS_RAIN_WEEK , us, 0.3}, // Multiply by 0.3 to get mm
+	{"rain.month"   , WS_RAIN_MONTH, us, 0.3}  // Multiply by 0.3 to get mm
 };
 
 
@@ -122,13 +135,14 @@ struct wug_record {
 	// PASSWORD [PASSWORD registered with this ID]
 	// dateutc - [YYYY-MM-DD HH:MM:SS (mysql format)]
 	{"winddir"      , 12, ub,  22.5,        0.0},	// - [0-360]
-	{"windspeedmph" ,  9, wa,   2.2369363,  0.0},	// - [mph]
-	{"windgustmph"  , 10, wg,   2.2369363,  0.0},	// - [windgustmph]
+	{"windspeedmph" ,  9, wa,   0.22369363, 0.0},	// - [mph]
+	{"windgustmph"  , 10, wg,   0.22369363, 0.0},	// - [windgustmph]
 	{"humidity"     ,  4, ub,   1.0,        0.0},	// - [%]
 	{"tempf"        ,  5, ss,   0.18,      32.0},	// - [temperature F]
-	{"rainin"       , 13, us,   0.39370079, 0.0},	// - [rain in]
-	// dailyrainin - [daily rain in accumulated]
-	{"baromin"      ,  7, us,   0.02953,    0.0}	// - [barom in]
+//	{"rainin"       , 13, us,   0.39370079, 0.0},	// - [rain in]
+	{"rainin"       ,256, us,   0.39370079, 0.0},	// - [rain in]
+	{"dailyrainin"  ,258, us,   0.39370079, 0.0},	// dailyrainin - [daily rain in accumulated]
+	{"baromin"      ,  7, us,   0.002953,   0.0}	// - [barom in]
 	// dewptf - [dewpoint F]
 	// weather - [text] -- metar style (+RA)
 	// clouds - [text] -- SKC, FEW, SCT, BKN, OVC
@@ -136,7 +150,7 @@ struct wug_record {
 };
 
 
-// Structures used by libusb
+// libusb structures and functions
 struct usb_dev_handle *devh;
 struct usb_device *dev;
 
@@ -144,15 +158,11 @@ void list_devices();
 struct usb_device *find_device(int vendor, int product);
 void print_bytes(char *address, int len);
 
+// USB class
 int CUSB_Open(int vendor, int product);
 int CUSB_Close();
 
-// Structures used by the weather station
-char m_buf[WS_BUFFER_SIZE] = {0};	// Raw WS data
-
-time_t m_previous_timestamp = 0;	// Previous readout
-time_t m_timestamp = 0;			// Current readout
-
+// Weather Station class
 void CWS_serialize(char isStoring);
 
 int CWS_Open();
@@ -164,8 +174,17 @@ unsigned short CWS_dec_ptr(unsigned short ptr);
 unsigned short CWS_read_block(unsigned short ptr, char* buf);
 unsigned short CWS_read_fixed_block();	
 
+int CWS_calculate_rain(unsigned short current_pos, unsigned short data_count, unsigned short start);
+float CWS_dew_point(signed short temp, unsigned char hum);
+
 unsigned char CWS_bcd_decode(unsigned char byte);
 unsigned short CWS_unsigned_short(char* raw);
 signed short CWS_signed_short(char* raw);
 int CWS_decode(char* raw, enum ws_types ws_type, float scale, float offset, char* result);
+
+// Weather Station properties
+char m_buf[WS_BUFFER_SIZE] = {0};	// Raw WS data
+
+time_t m_previous_timestamp = 0;	// Previous readout
+time_t m_timestamp = 0;			// Current readout
 

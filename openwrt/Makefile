@@ -48,6 +48,8 @@ endef
 define Package/fowsr/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/fowsr $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/wunderground.sh $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/pywws.sh $(1)/usr/bin/
 endef
 
 $(eval $(call BuildPackage,fowsr))

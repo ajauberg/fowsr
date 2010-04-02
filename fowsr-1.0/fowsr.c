@@ -1,4 +1,4 @@
-/*  Fine Offset Weather Station Reader
+/*  Fine Offset Weather Station Reader - Main file
 
    (C) Arne-Jørgen Auberg (arne.jorgen.auberg@gmail.com)
 
@@ -227,7 +227,7 @@ int CWS_Read()
 	};
 
 	// Dump all weather station records
-	print_bytes(&m_buf[0x100], WS_BUFFER_SIZE-0x100);
+	print_bytes(&m_buf[WS_BUFFER_START], WS_BUFFER_SIZE-WS_BUFFER_START);
 
 	return(0);
 }
@@ -258,6 +258,8 @@ int CWS_Write(char arg,char* fname)
 			if (difftime(timestamp, m_previous_timestamp) < 0)
 				break;	// All new records written
 
+			WS_calculate_rain(&m_buf[current_pos], data_count, i);
+
 			int n,j;
 			char s1[1000]={0},s2[1000]={0};
 
@@ -280,7 +282,7 @@ int CWS_Write(char arg,char* fname)
 				case 'w':
 					// Save in Wunderground format
 					n=strftime(s1,100,"dateutc=%Y-%m-%d%20%H:%M:%S", gmtime(&timestamp));
-					for (j=0;j<7;j++) {
+					for (j=0;j<8;j++) {
 						strcat(s1,"&");
 						strcat(s1,wug_format[j].name);
 						strcat(s1,"=");
@@ -354,7 +356,7 @@ unsigned short CWS_read_fixed_block()
 
 	// Dump decoded fixed block data
 	char s1[1000]={0},s2[1000]={0};
-	for (i=0;i<88;i++) {
+	for (i=11;i<88;i++) {
 		strcpy(s1,ws_format[i].name);
 		strcat(s1,"=");
 
@@ -378,6 +380,75 @@ unsigned short CWS_read_fixed_block()
 	exit(1);
 }
 
+int CWS_calculate_rain(unsigned short current_pos, unsigned short data_count, unsigned short start)
+{
+	// Initialize variables
+	m_buf[WS_RAIN_HOUR]	= -1;
+	m_buf[WS_RAIN_DAY]	= -1;
+	m_buf[WS_RAIN_WEEK]	= -1;
+	m_buf[WS_RAIN_MONTH]	= -1;
+
+	unsigned short initial_pos = current_pos;
+	time_t timestamp = m_timestamp;	// Set to current time
+
+	unsigned short i;
+	for (i=start;i<data_count;i++) {
+		if        (difftime(m_timestamp,timestamp) > 60*60*24*30) {	// Month
+			if (!(unsigned short)m_buf[WS_RAIN_MONTH])
+				m_buf[WS_RAIN_MONTH]=m_buf[initial_pos+WS_RAIN]-m_buf[current_pos+WS_RAIN];
+		} else if (difftime(m_timestamp,timestamp) > 60*60*24*7 ) {	// Week
+			if (!(unsigned short)m_buf[WS_RAIN_WEEK])
+				m_buf[WS_RAIN_WEEK]=m_buf[initial_pos+WS_RAIN]-m_buf[current_pos+WS_RAIN];
+		} else if (difftime(m_timestamp,timestamp) > 60*60*24   ) {	// Day
+			if (!(unsigned short)m_buf[WS_RAIN_DAY])
+				m_buf[WS_RAIN_DAY]=m_buf[initial_pos+WS_RAIN]-m_buf[current_pos+WS_RAIN];
+		} else if (difftime(m_timestamp,timestamp) > 60*60      ) {	// Hour
+			if (!(unsigned short)m_buf[WS_RAIN_HOUR])
+				m_buf[WS_RAIN_HOUR]=m_buf[initial_pos+WS_RAIN]-m_buf[current_pos+WS_RAIN];
+		}
+
+		timestamp -= m_buf[current_pos+WS_DELAY]*60;	// Update timestamp
+
+		current_pos=CWS_dec_ptr(current_pos);
+	}
+
+	// Set to zero if not set.
+	if ((unsigned short)m_buf[WS_RAIN_HOUR]	== -1) m_buf[WS_RAIN_HOUR]=0;
+	if ((unsigned short)m_buf[WS_RAIN_DAY]	== -1) m_buf[WS_RAIN_DAY]=0;
+	if ((unsigned short)m_buf[WS_RAIN_WEEK]	== -1) m_buf[WS_RAIN_WEEK]=0;
+	if ((unsigned short)m_buf[WS_RAIN_MONTH]== -1) m_buf[WS_RAIN_MONTH]=0;
+
+	return (0);
+}
+
+float CWS_dew_point(signed short temp, unsigned char hum)
+{
+	// Compute dew point, using formula from
+	// http://en.wikipedia.org/wiki/Dew_point.
+	float a = 17.27;
+	float b = 237.7;
+	float gamma = ((a * temp) / (b + temp)) + log(hum / 100);
+	return (b * gamma) / (a - gamma);
+}
+/*
+signed short CWS_wind_chill(signed short temp, unsigned char wind):
+	// Compute wind chill, using formula from
+	// http://en.wikipedia.org/wiki/wind_chill
+	if temp == None or wind == None:
+		return None
+	wind_kph = wind * 3.6
+	if wind_kph <= 4.8 or temp > 10.0:
+		return temp
+	return min(13.12 + (temp * 0.6215) + (((0.3965 * temp) - 11.37) * (wind_kph ** 0.16)), temp)
+
+signed short CWS_apparent_temp(signed short temp, unsigned char rh, unsigned char wind):
+	// Compute apparent temperature (real feel), using formula from
+	// http://www.bom.gov.au/info/thermal_stress/
+	if temp == None or rh == None or wind == None:
+		return None
+	vap_press = (float(rh) / 100.0) * 6.105 * math.exp(17.27 * temp / (237.7 + temp))
+	return temp + (0.33 * vap_press) - (0.70 * wind) - 4.00
+*/
 unsigned char CWS_bcd_decode(unsigned char byte)
 {
         unsigned char hi = (byte / 16) & 0x0F;
@@ -471,10 +542,10 @@ int main(int argc, char **argv) {
 				CWS_Close();
 			break;
 			default:
-				printf("Fine Offset Weather Station Reader v1.0\n");
-				printf("(C) 2010 Arne-Jørgen Auberg (arne.jorgen.auberg@gmail.com)\n\n");
-				printf("See http://fowsr.googlecode.com for more information\n");
+				printf("\nFine Offset Weather Station Reader v1.0\n");
+				printf("(C) 2010 Arne-Jørgen Auberg (arne.jorgen.auberg@gmail.com)\n");
 				printf("Credits to Michael Pendec, Jim Easterbrook, Timo Juhani Lindfors\n\n");
+				printf("See http://fowsr.googlecode.com for more information\n");
 				printf("options\n");
 				printf(" -p	Logfile in pywws format\n");
 				printf(" -w	Logfile in Wunderground format\n\n");

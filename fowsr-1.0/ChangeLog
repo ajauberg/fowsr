@@ -6,3 +6,8 @@
 
 1.0 20100329
 	pywws log format corrected
+
+1.0 20100403
+	wunderground format adjsuted
+	added dew point
+	added calculated rain hour/day/week/month

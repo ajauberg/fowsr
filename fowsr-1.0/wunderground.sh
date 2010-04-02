@@ -2,7 +2,7 @@
 
 # Call fowsr and upload data to Wunderground
 
-wsr=/usr/bin/fowsr -w
+wsr="/usr/bin/fowsr -w"
 LOG=/var/wunderground.log
 ID=$1
 PASSWORD=$2
