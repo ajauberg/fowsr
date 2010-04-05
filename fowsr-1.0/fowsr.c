@@ -23,6 +23,7 @@
 #include <signal.h>
 #include <ctype.h>
 #include <time.h>
+#include <math.h>
 #include <usb.h>
 
 #include "fowsr.h"
@@ -380,31 +381,59 @@ unsigned short CWS_read_fixed_block()
 	exit(1);
 }
 
+char CWS_calculate_rain_period(char done, unsigned short pos, unsigned short begin, unsigned short end)
+{
+	if (done) // Already done?
+		return 1;
+
+	unsigned short result;
+	unsigned int begin_rain, end_rain;
+
+	begin_rain = CWS_unsigned_short(&m_buf[begin]);
+	end_rain   = CWS_unsigned_short(&m_buf[end]);
+	if (begin_rain > end_rain) {	// Test for wrap around in rain counter
+		end_rain += 0x10000;
+	}
+
+	result = (end_rain - begin_rain) % 0x10000;
+
+	m_buf[pos]	= result % 0x100;
+	m_buf[pos+1]	= (result / 256) % 0x100;
+
+	return 1;
+}
+
 int CWS_calculate_rain(unsigned short current_pos, unsigned short data_count, unsigned short start)
 {
-	// Initialize variables
-	m_buf[WS_RAIN_HOUR]	= -1;
-	m_buf[WS_RAIN_DAY]	= -1;
-	m_buf[WS_RAIN_WEEK]	= -1;
-	m_buf[WS_RAIN_MONTH]	= -1;
+	// Initialize rain variables
+	m_buf[WS_RAIN_HOUR]	= 0;	m_buf[WS_RAIN_HOUR+1]	= 0;
+	m_buf[WS_RAIN_DAY]	= 0;	m_buf[WS_RAIN_DAY+1]	= 0;
+	m_buf[WS_RAIN_WEEK]	= 0;	m_buf[WS_RAIN_WEEK+1]	= 0;
+	m_buf[WS_RAIN_MONTH]	= 0;	m_buf[WS_RAIN_MONTH+1]	= 0;
+
+	// Flags set when calculation is done
+	char bhour	= 0;
+	char bday	= 0;
+	char bweek	= 0;
+	char bmonth	= 0;
 
 	unsigned short initial_pos = current_pos;
 	time_t timestamp = m_timestamp;	// Set to current time
 
 	unsigned short i;
-	for (i=start;i<data_count;i++) {
+	for (i=start;i<data_count;i++) {	// Calculate backwards through buffer, not all values may be calculated if buffer is too short
 		if        (difftime(m_timestamp,timestamp) > 60*60*24*30) {	// Month
-			if (!(unsigned short)m_buf[WS_RAIN_MONTH])
-				m_buf[WS_RAIN_MONTH]=m_buf[initial_pos+WS_RAIN]-m_buf[current_pos+WS_RAIN];
+			bmonth = CWS_calculate_rain_period(bmonth, WS_RAIN_MONTH, CWS_unsigned_short(&m_buf[current_pos+WS_RAIN]), CWS_unsigned_short(&m_buf[initial_pos+WS_RAIN]));
+
 		} else if (difftime(m_timestamp,timestamp) > 60*60*24*7 ) {	// Week
-			if (!(unsigned short)m_buf[WS_RAIN_WEEK])
-				m_buf[WS_RAIN_WEEK]=m_buf[initial_pos+WS_RAIN]-m_buf[current_pos+WS_RAIN];
+			bweek = CWS_calculate_rain_period(bweek, WS_RAIN_WEEK, CWS_unsigned_short(&m_buf[current_pos+WS_RAIN]), CWS_unsigned_short(&m_buf[initial_pos+WS_RAIN]));
+
 		} else if (difftime(m_timestamp,timestamp) > 60*60*24   ) {	// Day
-			if (!(unsigned short)m_buf[WS_RAIN_DAY])
-				m_buf[WS_RAIN_DAY]=m_buf[initial_pos+WS_RAIN]-m_buf[current_pos+WS_RAIN];
+			bday = CWS_calculate_rain_period(bday, WS_RAIN_DAY, CWS_unsigned_short(&m_buf[current_pos+WS_RAIN]), CWS_unsigned_short(&m_buf[initial_pos+WS_RAIN]));
+
 		} else if (difftime(m_timestamp,timestamp) > 60*60      ) {	// Hour
-			if (!(unsigned short)m_buf[WS_RAIN_HOUR])
-				m_buf[WS_RAIN_HOUR]=m_buf[initial_pos+WS_RAIN]-m_buf[current_pos+WS_RAIN];
+			bhour = CWS_calculate_rain_period(bhour, WS_RAIN_HOUR, CWS_unsigned_short(&m_buf[current_pos+WS_RAIN]), CWS_unsigned_short(&m_buf[initial_pos+WS_RAIN]));
+
 		}
 
 		timestamp -= m_buf[current_pos+WS_DELAY]*60;	// Update timestamp
@@ -412,16 +441,10 @@ int CWS_calculate_rain(unsigned short current_pos, unsigned short data_count, un
 		current_pos=CWS_dec_ptr(current_pos);
 	}
 
-	// Set to zero if not set.
-	if ((unsigned short)m_buf[WS_RAIN_HOUR]	== -1) m_buf[WS_RAIN_HOUR]=0;
-	if ((unsigned short)m_buf[WS_RAIN_DAY]	== -1) m_buf[WS_RAIN_DAY]=0;
-	if ((unsigned short)m_buf[WS_RAIN_WEEK]	== -1) m_buf[WS_RAIN_WEEK]=0;
-	if ((unsigned short)m_buf[WS_RAIN_MONTH]== -1) m_buf[WS_RAIN_MONTH]=0;
-
 	return (0);
 }
 
-float CWS_dew_point(signed short temp, unsigned char hum)
+float CWS_dew_point(float temp, unsigned char hum)
 {
 	// Compute dew point, using formula from
 	// http://en.wikipedia.org/wiki/Dew_point.
@@ -431,39 +454,43 @@ float CWS_dew_point(signed short temp, unsigned char hum)
 	return (b * gamma) / (a - gamma);
 }
 /*
-signed short CWS_wind_chill(signed short temp, unsigned char wind):
+signed short CWS_wind_chill(signed short temp, unsigned char wind)
+{
 	// Compute wind chill, using formula from
 	// http://en.wikipedia.org/wiki/wind_chill
-	if temp == None or wind == None:
-		return None
-	wind_kph = wind * 3.6
-	if wind_kph <= 4.8 or temp > 10.0:
-		return temp
-	return min(13.12 + (temp * 0.6215) + (((0.3965 * temp) - 11.37) * (wind_kph ** 0.16)), temp)
+	wind_kph = wind * 3.6;
+	if ((wind_kph <= 4.8) || (temp > 10.0))
+		return temp;
+	return min(13.12 + (temp * 0.6215) + (((0.3965 * temp) - 11.37) * (wind_kph ** 0.16)), temp);
+}
 
-signed short CWS_apparent_temp(signed short temp, unsigned char rh, unsigned char wind):
+signed short CWS_apparent_temp(signed short temp, unsigned char rh, unsigned char wind)
+{
 	// Compute apparent temperature (real feel), using formula from
 	// http://www.bom.gov.au/info/thermal_stress/
-	if temp == None or rh == None or wind == None:
-		return None
-	vap_press = (float(rh) / 100.0) * 6.105 * math.exp(17.27 * temp / (237.7 + temp))
-	return temp + (0.33 * vap_press) - (0.70 * wind) - 4.00
+	vap_press = (float(rh) / 100.0) * 6.105 * math.exp(17.27 * temp / (237.7 + temp));
+	return (temp + (0.33 * vap_press) - (0.70 * wind) - 4.00);
+}
 */
 unsigned char CWS_bcd_decode(unsigned char byte)
 {
-        unsigned char hi = (byte / 16) & 0x0F;
         unsigned char lo = byte & 0x0F;
-        return (hi * 10) + lo;
+        unsigned char hi = (byte / 16) & 0x0F;
+        return (lo + (hi * 10));
 }
 
 unsigned short CWS_unsigned_short(char* raw)
 {
-	return raw[0] + (raw[1] * 256);
+	unsigned char lo = raw[0];
+	unsigned char hi = raw[1];
+	return (lo + (hi * 256));
 }
 
 signed short CWS_signed_short(char* raw)
 {
-	return raw[0] + (raw[1] * 256);
+	signed char lo = raw[0];
+	signed char hi = raw[1];
+	return (lo + (hi * 256));
 }
 
 int CWS_decode(char* raw, enum ws_types ws_type, float scale, float offset, char* result)
@@ -513,6 +540,12 @@ int CWS_decode(char* raw, enum ws_types ws_type, float scale, float offset, char
 			// wind gust - 12 bits split across a byte and a nibble
 			fresult = raw[0] + ((raw[1] & 0xF0) * 16);
 			fresult = fresult * scale + offset;
+			n=sprintf(result,"%.1f", fresult);
+		break;
+		case dp:
+			// Scale outside temperature and calculate dew point
+			fresult = CWS_unsigned_short(raw+WS_TEMPERATURE_OUT) * scale + offset;
+			fresult = CWS_dew_point(fresult, raw[WS_HUMIDITY_OUT]);
 			n=sprintf(result,"%.1f", fresult);
 		break;
 		default:
