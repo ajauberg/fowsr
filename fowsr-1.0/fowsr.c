@@ -259,7 +259,7 @@ int CWS_Write(char arg,char* fname)
 			if (difftime(timestamp, m_previous_timestamp) < 0)
 				break;	// All new records written
 
-			WS_calculate_rain(&m_buf[current_pos], data_count, i);
+			CWS_calculate_rain(current_pos, data_count, i);
 
 			int n,j;
 			char s1[1000]={0},s2[1000]={0};
@@ -392,13 +392,13 @@ char CWS_calculate_rain_period(char done, unsigned short pos, unsigned short beg
 	begin_rain = CWS_unsigned_short(&m_buf[begin]);
 	end_rain   = CWS_unsigned_short(&m_buf[end]);
 	if (begin_rain > end_rain) {	// Test for wrap around in rain counter
-		end_rain += 0x10000;
+		end_rain += 0x10000;	// Make sure that end rain counter always is the largest
 	}
 
-	result = (end_rain - begin_rain) % 0x10000;
+	result = (end_rain - begin_rain) % 0x10000;	// Squeeze the result back to a short
 
-	m_buf[pos]	= result % 0x100;
-	m_buf[pos+1]	= (result / 256) % 0x100;
+	m_buf[pos]	= result % 0x100;		// Lo byte
+	m_buf[pos+1]	= (result / 256) % 0x100;	// Hi byte
 
 	return 1;
 }
@@ -422,17 +422,17 @@ int CWS_calculate_rain(unsigned short current_pos, unsigned short data_count, un
 
 	unsigned short i;
 	for (i=start;i<data_count;i++) {	// Calculate backwards through buffer, not all values may be calculated if buffer is too short
-		if        (difftime(m_timestamp,timestamp) > 60*60*24*30) {	// Month
-			bmonth = CWS_calculate_rain_period(bmonth, WS_RAIN_MONTH, CWS_unsigned_short(&m_buf[current_pos+WS_RAIN]), CWS_unsigned_short(&m_buf[initial_pos+WS_RAIN]));
+		if        (difftime(m_timestamp,timestamp) > 30*24*60*60) {	// Month
+			bmonth = CWS_calculate_rain_period(bmonth, WS_RAIN_MONTH, current_pos+WS_RAIN, initial_pos+WS_RAIN);
 
-		} else if (difftime(m_timestamp,timestamp) > 60*60*24*7 ) {	// Week
-			bweek = CWS_calculate_rain_period(bweek, WS_RAIN_WEEK, CWS_unsigned_short(&m_buf[current_pos+WS_RAIN]), CWS_unsigned_short(&m_buf[initial_pos+WS_RAIN]));
+		} else if (difftime(m_timestamp,timestamp) >  7*24*60*60) {	// Week
+			bweek = CWS_calculate_rain_period(bweek, WS_RAIN_WEEK, current_pos+WS_RAIN, initial_pos+WS_RAIN);
 
-		} else if (difftime(m_timestamp,timestamp) > 60*60*24   ) {	// Day
-			bday = CWS_calculate_rain_period(bday, WS_RAIN_DAY, CWS_unsigned_short(&m_buf[current_pos+WS_RAIN]), CWS_unsigned_short(&m_buf[initial_pos+WS_RAIN]));
+		} else if (difftime(m_timestamp,timestamp) >    24*60*60) {	// Day
+			bday = CWS_calculate_rain_period(bday, WS_RAIN_DAY, current_pos+WS_RAIN, initial_pos+WS_RAIN);
 
-		} else if (difftime(m_timestamp,timestamp) > 60*60      ) {	// Hour
-			bhour = CWS_calculate_rain_period(bhour, WS_RAIN_HOUR, CWS_unsigned_short(&m_buf[current_pos+WS_RAIN]), CWS_unsigned_short(&m_buf[initial_pos+WS_RAIN]));
+		} else if (difftime(m_timestamp,timestamp) >       60*60) {	// Hour
+			bhour = CWS_calculate_rain_period(bhour, WS_RAIN_HOUR, current_pos+WS_RAIN, initial_pos+WS_RAIN);
 
 		}
 
@@ -453,25 +453,7 @@ float CWS_dew_point(float temp, unsigned char hum)
 	float gamma = ((a * temp) / (b + temp)) + log(hum / 100);
 	return (b * gamma) / (a - gamma);
 }
-/*
-signed short CWS_wind_chill(signed short temp, unsigned char wind)
-{
-	// Compute wind chill, using formula from
-	// http://en.wikipedia.org/wiki/wind_chill
-	wind_kph = wind * 3.6;
-	if ((wind_kph <= 4.8) || (temp > 10.0))
-		return temp;
-	return min(13.12 + (temp * 0.6215) + (((0.3965 * temp) - 11.37) * (wind_kph ** 0.16)), temp);
-}
 
-signed short CWS_apparent_temp(signed short temp, unsigned char rh, unsigned char wind)
-{
-	// Compute apparent temperature (real feel), using formula from
-	// http://www.bom.gov.au/info/thermal_stress/
-	vap_press = (float(rh) / 100.0) * 6.105 * math.exp(17.27 * temp / (237.7 + temp));
-	return (temp + (0.33 * vap_press) - (0.70 * wind) - 4.00);
-}
-*/
 unsigned char CWS_bcd_decode(unsigned char byte)
 {
         unsigned char lo = byte & 0x0F;

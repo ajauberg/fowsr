@@ -2,7 +2,7 @@ CC = gcc
 NAME = fowsr
 SRC = fowsr.c
 OBJ = $(subst .c,.o, $(SRC))
-LDFLAGS += -lusb
+LDFLAGS += -lusb -lm
 
 all: $(NAME)
 
