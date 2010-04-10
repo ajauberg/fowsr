@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2006 OpenWrt.org
+# Copyright (C) 2010 OpenWrt.org
 #
 # This is free software, licensed under the GNU General Public License v2.
 # See /LICENSE for more information.
@@ -9,11 +9,11 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=fowsr
 PKG_VERSION:=1.0
-PKG_RELEASE:=20100329
+PKG_RELEASE:=20100403
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION)-$(PKG_RELEASE).tar.gz
 PKG_SOURCE_URL:=http://fowsr.googlecode.com/files
-PKG_MD5SUM:=66f788bb7103deaaade438fb6b9abafb
+PKG_MD5SUM:=e3f66ae504ce92a969279cd4e77b165d
 PKG_CAT:=zcat
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
