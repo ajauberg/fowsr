@@ -283,17 +283,25 @@ int CWS_Write(char arg,char* fname)
 				case 'w':
 					// Save in Wunderground format
 					n=strftime(s1,100,"dateutc=%Y-%m-%d%20%H:%M:%S", gmtime(&timestamp));
-					for (j=0;j<8;j++) {
+					for (j=0;j<9;j++) {
 						strcat(s1,"&");
 						strcat(s1,wug_format[j].name);
 						strcat(s1,"=");
-		
-						CWS_decode(&m_buf[current_pos+wug_format[j].pos],
-								wug_format[j].ws_type,
-								wug_format[j].scale,
-								wug_format[j].offset,
-								s2);
-		
+
+						if (j==5 || j==6) { // Hourly/daily rain counters
+							CWS_decode(&m_buf[wug_format[j].pos],
+									wug_format[j].ws_type,
+									wug_format[j].scale,
+									wug_format[j].offset,
+									s2);
+						} else {
+							CWS_decode(&m_buf[current_pos+wug_format[j].pos],
+									wug_format[j].ws_type,
+									wug_format[j].scale,
+									wug_format[j].offset,
+									s2);
+						}
+
 						strcat(s1,s2);
 					};
 				break;
@@ -324,8 +332,8 @@ unsigned short CWS_dec_ptr(unsigned short ptr)
 
 unsigned short CWS_read_block(unsigned short ptr, char* buf)
 {
-        char buf_1 = (char)(ptr / 256) & 0xFF;
-        char buf_2 = (char)(ptr & 0xFF);
+	char buf_1 = (char)(ptr / 256) & 0xFF;
+	char buf_2 = (char)(ptr & 0xFF);
 	char tbuf[8];
 	tbuf[0] = 0xA1;
 	tbuf[1] = buf_1;
@@ -406,9 +414,9 @@ char CWS_calculate_rain_period(char done, unsigned short pos, unsigned short beg
 int CWS_calculate_rain(unsigned short current_pos, unsigned short data_count, unsigned short start)
 {
 	// Initialize rain variables
-	m_buf[WS_RAIN_HOUR]	= 0;	m_buf[WS_RAIN_HOUR+1]	= 0;
-	m_buf[WS_RAIN_DAY]	= 0;	m_buf[WS_RAIN_DAY+1]	= 0;
-	m_buf[WS_RAIN_WEEK]	= 0;	m_buf[WS_RAIN_WEEK+1]	= 0;
+	m_buf[WS_RAIN_HOUR]	= 0;	m_buf[WS_RAIN_HOUR +1]	= 0;
+	m_buf[WS_RAIN_DAY]	= 0;	m_buf[WS_RAIN_DAY  +1]	= 0;
+	m_buf[WS_RAIN_WEEK]	= 0;	m_buf[WS_RAIN_WEEK +1]	= 0;
 	m_buf[WS_RAIN_MONTH]	= 0;	m_buf[WS_RAIN_MONTH+1]	= 0;
 
 	// Flags set when calculation is done
@@ -417,22 +425,28 @@ int CWS_calculate_rain(unsigned short current_pos, unsigned short data_count, un
 	char bweek	= 0;
 	char bmonth	= 0;
 
+	// Set the different time periods
+	time_t hour	=       60*60;
+	time_t day	=    24*60*60;
+	time_t week	=  7*24*60*60;
+	time_t month	= 30*24*60*60;
+
 	unsigned short initial_pos = current_pos;
 	time_t timestamp = m_timestamp;	// Set to current time
 
 	unsigned short i;
-	for (i=start;i<data_count;i++) {	// Calculate backwards through buffer, not all values may be calculated if buffer is too short
-		if        (difftime(m_timestamp,timestamp) > 30*24*60*60) {	// Month
+	for (i=start;i<data_count;i++) {	// Calculate backwards through buffer, not all values will be calculated if buffer is too short
+		if        (difftime(m_timestamp,timestamp) > month) {
 			bmonth = CWS_calculate_rain_period(bmonth, WS_RAIN_MONTH, current_pos+WS_RAIN, initial_pos+WS_RAIN);
 
-		} else if (difftime(m_timestamp,timestamp) >  7*24*60*60) {	// Week
-			bweek = CWS_calculate_rain_period(bweek, WS_RAIN_WEEK, current_pos+WS_RAIN, initial_pos+WS_RAIN);
+		} else if (difftime(m_timestamp,timestamp) > week) {
+			bweek = CWS_calculate_rain_period(bweek, WS_RAIN_WEEK,    current_pos+WS_RAIN, initial_pos+WS_RAIN);
 
-		} else if (difftime(m_timestamp,timestamp) >    24*60*60) {	// Day
-			bday = CWS_calculate_rain_period(bday, WS_RAIN_DAY, current_pos+WS_RAIN, initial_pos+WS_RAIN);
+		} else if (difftime(m_timestamp,timestamp) > day) {
+			bday = CWS_calculate_rain_period(bday, WS_RAIN_DAY,       current_pos+WS_RAIN, initial_pos+WS_RAIN);
 
-		} else if (difftime(m_timestamp,timestamp) >       60*60) {	// Hour
-			bhour = CWS_calculate_rain_period(bhour, WS_RAIN_HOUR, current_pos+WS_RAIN, initial_pos+WS_RAIN);
+		} else if (difftime(m_timestamp,timestamp) > hour) {
+			bhour = CWS_calculate_rain_period(bhour, WS_RAIN_HOUR,    current_pos+WS_RAIN, initial_pos+WS_RAIN);
 
 		}
 
@@ -444,13 +458,18 @@ int CWS_calculate_rain(unsigned short current_pos, unsigned short data_count, un
 	return (0);
 }
 
-float CWS_dew_point(float temp, unsigned char hum)
+float CWS_dew_point(char* raw, float scale, float offset)
 {
 	// Compute dew point, using formula from
 	// http://en.wikipedia.org/wiki/Dew_point.
 	float a = 17.27;
 	float b = 237.7;
+
+	float temp = CWS_signed_short(raw+WS_TEMPERATURE_OUT) * scale + offset;
+	float hum = raw[WS_HUMIDITY_OUT];
+
 	float gamma = ((a * temp) / (b + temp)) + log(hum / 100);
+
 	return (b * gamma) / (a - gamma);
 }
 
@@ -463,16 +482,12 @@ unsigned char CWS_bcd_decode(unsigned char byte)
 
 unsigned short CWS_unsigned_short(char* raw)
 {
-	unsigned char lo = raw[0];
-	unsigned char hi = raw[1];
-	return (lo + (hi * 256));
+	return raw[0] + (raw[1] * 256);
 }
 
 signed short CWS_signed_short(char* raw)
 {
-	signed char lo = raw[0];
-	signed char hi = raw[1];
-	return (lo + (hi * 256));
+	return raw[0] + (raw[1] * 256);
 }
 
 int CWS_decode(char* raw, enum ws_types ws_type, float scale, float offset, char* result)
@@ -491,11 +506,11 @@ int CWS_decode(char* raw, enum ws_types ws_type, float scale, float offset, char
 		break;
 		case us:
 			fresult = CWS_unsigned_short(raw) * scale + offset;
-			n=sprintf(result,"%.1f", fresult);
+			n=sprintf(result,"%.3f", fresult);
 		break;
 		case ss:
 			fresult = CWS_signed_short(raw) * scale + offset;
-			n=sprintf(result,"%.1f", fresult);
+			n=sprintf(result,"%.3f", fresult);
 		break;
 		case dt:
 			year = CWS_bcd_decode(raw[0]);
@@ -526,8 +541,7 @@ int CWS_decode(char* raw, enum ws_types ws_type, float scale, float offset, char
 		break;
 		case dp:
 			// Scale outside temperature and calculate dew point
-			fresult = CWS_unsigned_short(raw+WS_TEMPERATURE_OUT) * scale + offset;
-			fresult = CWS_dew_point(fresult, raw[WS_HUMIDITY_OUT]);
+			fresult = CWS_dew_point(raw, scale, offset);
 			n=sprintf(result,"%.1f", fresult);
 		break;
 		default:
@@ -557,10 +571,10 @@ int main(int argc, char **argv) {
 				CWS_Close();
 			break;
 			default:
-				printf("\nFine Offset Weather Station Reader v1.0\n");
+				printf("\nFine Offset Weather Station Reader v1.0\n\n");
 				printf("(C) 2010 Arne-Jørgen Auberg (arne.jorgen.auberg@gmail.com)\n");
 				printf("Credits to Michael Pendec, Jim Easterbrook, Timo Juhani Lindfors\n\n");
-				printf("See http://fowsr.googlecode.com for more information\n");
+				printf("See http://fowsr.googlecode.com for more information\n\n");
 				printf("options\n");
 				printf(" -p	Logfile in pywws format\n");
 				printf(" -w	Logfile in Wunderground format\n\n");

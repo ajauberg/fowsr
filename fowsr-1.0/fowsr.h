@@ -26,7 +26,7 @@
 // Each key specifies a (pos, type, scale) tuple that is understood by decode().
 // See http://www.jim-easterbrook.me.uk/weather/mm/ for description of data
 
-#define WS_BUFFER_SIZE		0x10010	// Size of total buffer
+#define WS_BUFFER_SIZE		0x10000	// Size of total buffer
 #define WS_BUFFER_START		0x100	// Size of fixed block, start of up to 4080 buffer records
 #define WS_BUFFER_END		0xFFF0	// Last buffer record
 #define WS_BUFFER_RECORD	0x10	// Size of one buffer record
@@ -35,14 +35,18 @@
 #define WS_DELAY		0	// Position of delay parameter
 #define WS_HUMIDITY_OUT		4	// Position of outside humidity parameter
 #define WS_TEMPERATURE_OUT	5	// Position of outside temperature parameter
+#define WS_ABS_PRESSURE		7	// Position of absolute pressure parameter
+#define WS_WIND_AVE		9	// Position of wind direction parameter
+#define WS_WIND_GUST		10	// Position of wind direction parameter
+#define WS_WIND_DIR		12	// Position of wind direction parameter
 #define WS_RAIN			13	// Position of rain parameter
 #define WS_DATA_COUNT		27	// Position of data_count parameter
 #define WS_CURRENT_POS		30	// Position of current_pos parameter
 
-#define WS_RAIN_HOUR		0x10000	// Position of hourly calculated rain
-#define WS_RAIN_DAY		0x10002	// Position of daily calculated rain
-#define WS_RAIN_WEEK		0x10004	// Position of weekly calculated rain
-#define WS_RAIN_MONTH		0x10006	// Position of monthly calculated rain
+#define WS_RAIN_HOUR		0x08	// Position of hourly calculated rain
+#define WS_RAIN_DAY		0x0A	// Position of daily calculated rain
+#define WS_RAIN_WEEK		0x0C	// Position of weekly calculated rain
+#define WS_RAIN_MONTH		0x0E	// Position of monthly calculated rain
 
 enum ws_types {ub,sb,us,ss,dt,tt,pb,wa,wg,dp};
 
@@ -112,11 +116,11 @@ struct ws_record {
 	{"min.dewpoint.val"     , 116, ss, 0.1}, {"min.dewpoint.date"     , 196, dt, 1.0}, // Multiply by 0.1 to get °C
 	{"min.abs_pressure.val" , 120, us, 0.1}, {"min.abs_pressure.date" , 206, dt, 1.0}, // Multiply by 0.1 to get hPa
 	{"min.rel_pressure.val" , 124, us, 0.1}, {"min.rel_pressure.date" , 216, dt, 1.0}, // Multiply by 0.1 to get hPa
-// Calculated rainfall, must be callculated prior to every record
-	{"rain.hour"    , WS_RAIN_HOUR , us, 0.3}, // Multiply by 0.3 to get mm
-	{"rain.day"     , WS_RAIN_DAY  , us, 0.3}, // Multiply by 0.3 to get mm
-	{"rain.week"    , WS_RAIN_WEEK , us, 0.3}, // Multiply by 0.3 to get mm
-	{"rain.month"   , WS_RAIN_MONTH, us, 0.3}  // Multiply by 0.3 to get mm
+// Calculated rainfall, must be calculated prior to every record
+	{"rain.hour"  , WS_RAIN_HOUR , us, 0.3}, // Multiply by 0.3 to get mm
+	{"rain.day"   , WS_RAIN_DAY  , us, 0.3}, // Multiply by 0.3 to get mm
+	{"rain.week"  , WS_RAIN_WEEK , us, 0.3}, // Multiply by 0.3 to get mm
+	{"rain.month" , WS_RAIN_MONTH, us, 0.3}  // Multiply by 0.3 to get mm
 };
 
 
@@ -136,15 +140,15 @@ struct wug_record {
 	// ID [ID as registered by wunderground.com]
 	// PASSWORD [PASSWORD registered with this ID]
 	// dateutc - [YYYY-MM-DD HH:MM:SS (mysql format)]
-	{"winddir"      , 12, ub,  22.5,                  0.0},	// - [0-360]
-	{"windspeedmph" ,  9, wa,   0.22369363,           0.0},	// - [mph]
-	{"windgustmph"  , 10, wg,   0.22369363,           0.0},	// - [windgustmph]
-	{"humidity"     ,  4, ub,   1.0,                  0.0},	// - [%]
-	{"tempf"        ,  5, ss,   0.18,                32.0},	// - [temperature F]
-	{"rainin"       ,256, us,   0.39370079,           0.0},	// - [hourly rain in]
-	{"dailyrainin"  ,258, us,   0.39370079,           0.0},	// - [daily rain in accumulated]
-	{"baromin"      ,  7, us,   0.0029530058646697 ,  0.0},	// - [barom in]
-	{"dewptf"       ,  0, dp,   0.18,                32.0}	// - [dewpoint F]
+	{"winddir"      , WS_WIND_DIR        , ub ,  22.5                ,  0.0},	// - [0-360]
+	{"windspeedmph" , WS_WIND_AVE        , wa ,   0.22369363         ,  0.0},	// - [mph]
+	{"windgustmph"  , WS_WIND_GUST       , wg ,   0.22369363         ,  0.0},	// - [windgustmph]
+	{"humidity"     , WS_HUMIDITY_OUT    , ub ,   1.0                ,  0.0},	// - [%]
+	{"tempf"        , WS_TEMPERATURE_OUT , ss ,   0.18               , 32.0},	// - [temperature F]
+	{"rainin"       , WS_RAIN_HOUR       , us ,   0.39370079         ,  0.0},	// - [hourly rain in]
+	{"dailyrainin"  , WS_RAIN_DAY        , us ,   0.39370079         ,  0.0},	// - [daily rain in accumulated]
+	{"baromin"      , WS_ABS_PRESSURE    , us ,   0.0029530058646697 ,  0.0},	// - [barom in]
+	{"dewptf"       , 0                  , dp ,   0.18               , 32.0}	// - [dewpoint F]
 	// weather - [text] -- metar style (+RA)
 	// clouds - [text] -- SKC, FEW, SCT, BKN, OVC
 	// softwaretype - [text] ie: vws or weatherdisplay
@@ -177,7 +181,7 @@ unsigned short CWS_read_fixed_block();
 
 char CWS_calculate_rain_period(char done, unsigned short pos, unsigned short begin, unsigned short end);
 int CWS_calculate_rain(unsigned short current_pos, unsigned short data_count, unsigned short start);
-float CWS_dew_point(float temp, unsigned char hum);
+float CWS_dew_point(char* raw, float scale, float offset);
 
 unsigned char CWS_bcd_decode(unsigned char byte);
 unsigned short CWS_unsigned_short(char* raw);
