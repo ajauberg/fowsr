@@ -11,3 +11,6 @@
 	wunderground format adjusted
 	added dew point
 	added calculated rain hour/day/week/month
+
+1.0 20100417
+	calculated rainfall/dewpoint corrected
