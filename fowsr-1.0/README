@@ -1,4 +1,4 @@
-Fine Offset Wireless WeatherStation Reader.
+Fine Offset Wireless Weather Station Reader.
 
 (C) 2010 Ane-Jørgen Auberg
 
@@ -6,15 +6,20 @@ Software is not released through any official channels, and
 thereby do not expect support from the vendor on this product.
 
 This software is in no way affiliated or related to
-	 www.foshk.com,
-Fine Offset Electronics Co.,LTD.
+Fine Offset Electronics Co.,LTD. (http://www.foshk.com)
 
 Product USB vendor details Vendor 1941, ID 8021
 
-Application has been produced using a usb snoop tool on windows,
-to look at the usb device while an application communicates with the
-device. It has been working fine for me, but i cannot ensure the
-safety of using this application over a longer period.
+The application is written with inspiration from the following projects:
+
+  1)	WeatherStation.py - The pywws poject. http://pywws.googlecode.com
+
+  2)	usbsnoop2libusb.pl - The usbsnoop log file.
+	The latest version of the script should be in http://iki.fi/lindi/usb/usbsnoop2libusb.pl
+
+  3)	wwsr.c - Wireless Weather Station Reader
+	Michael Pendec (michael.pendec@gmail.com)
+
 
 Copyright (C) 2010 Arne-Jørgen Auberg  (arne.jorgen.auberg@gmail.com)
 
@@ -42,8 +47,9 @@ Brief introduction to functionality.
 
 Current status:
 	- Reads all weather station data, not all data is decoded or used.
-	- No writing of data, this must be performed using EasyWeather application
-	  or console display.
+	- Caching of previously read weather station values.
+	- No writing of data, this must be performed using 
+	  the EasyWeather application or the console display.
 	- Tested on OpenWrt, an embedded Linux distro
 	- Device gets claimed by the kernel usbhid driver, try running
 	  this program as root if you have problems to give it 

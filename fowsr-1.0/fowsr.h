@@ -19,20 +19,21 @@
 #include <time.h>
 #include <usb.h>
 
+// Parameters used by the cache file
 #define ISREADING	0
 #define ISWRITING	1
 
-// Table for decoding raw weather station data.
-// Each key specifies a (pos, type, scale) tuple that is understood by decode().
-// See http://www.jim-easterbrook.me.uk/weather/mm/ for description of data
-
+// Weather Station buffer parameters
 #define WS_BUFFER_SIZE		0x10000	// Size of total buffer
 #define WS_BUFFER_START		0x100	// Size of fixed block, start of up to 4080 buffer records
 #define WS_BUFFER_END		0xFFF0	// Last buffer record
 #define WS_BUFFER_RECORD	0x10	// Size of one buffer record
 #define WS_BUFFER_CHUNK		0x20	// Size of chunk received over USB
 
+// Weather Station buffer memory positions
 #define WS_DELAY		0	// Position of delay parameter
+#define WS_HUMIDITY_IN		1	// Position of inside humidity parameter
+#define WS_TEMPERATURE_IN	2	// Position of inside temperature parameter
 #define WS_HUMIDITY_OUT		4	// Position of outside humidity parameter
 #define WS_TEMPERATURE_OUT	5	// Position of outside temperature parameter
 #define WS_ABS_PRESSURE		7	// Position of absolute pressure parameter
@@ -40,13 +41,33 @@
 #define WS_WIND_GUST		10	// Position of wind direction parameter
 #define WS_WIND_DIR		12	// Position of wind direction parameter
 #define WS_RAIN			13	// Position of rain parameter
+#define WS_STATUS		15	// Position of status parameter
 #define WS_DATA_COUNT		27	// Position of data_count parameter
 #define WS_CURRENT_POS		30	// Position of current_pos parameter
 
+// Calculated rain parameters
+// NOTE: These postions are NOT stored in the Weather Station
 #define WS_RAIN_HOUR		0x08	// Position of hourly calculated rain
 #define WS_RAIN_DAY		0x0A	// Position of daily calculated rain
 #define WS_RAIN_WEEK		0x0C	// Position of weekly calculated rain
 #define WS_RAIN_MONTH		0x0E	// Position of monthly calculated rain
+
+// Conversion parameters for english units
+// Second and optional third factor is for adapting to actual stored values
+#define WS_SCALE_DEFAULT	 1.0			// No scaling
+#define WS_SCALE_MS_TO_MPH	 2.2369363         * 0.1
+#define WS_SCALE_C_TO_F		 1.8               * 0.1
+#define WS_SCALE_CM_TO_IN	 0.39370079        * 0.1 * 0.3
+#define WS_SCALE_HPA_TO_INHG	 0.029530058646697 * 0.1
+#define WS_SCALE_OFFS_TO_DEGREE	22.5
+
+#define WS_OFFSET_DEFAULT	 0.0			// No offset
+#define WS_OFFSET_C_TO_F	32.0
+
+
+// Table for decoding raw weather station data.
+// Each key specifies a (pos, type, scale) tuple that is understood by CWS_decode().
+// See http://www.jim-easterbrook.me.uk/weather/mm/ for description of data
 
 enum ws_types {ub,sb,us,ss,dt,tt,pb,wa,wg,dp};
 
@@ -140,15 +161,15 @@ struct wug_record {
 	// ID [ID as registered by wunderground.com]
 	// PASSWORD [PASSWORD registered with this ID]
 	// dateutc - [YYYY-MM-DD HH:MM:SS (mysql format)]
-	{"winddir"      , WS_WIND_DIR        , ub ,  22.5                ,  0.0},	// - [0-360]
-	{"windspeedmph" , WS_WIND_AVE        , wa ,   0.22369363         ,  0.0},	// - [mph]
-	{"windgustmph"  , WS_WIND_GUST       , wg ,   0.22369363         ,  0.0},	// - [windgustmph]
-	{"humidity"     , WS_HUMIDITY_OUT    , ub ,   1.0                ,  0.0},	// - [%]
-	{"tempf"        , WS_TEMPERATURE_OUT , ss ,   0.18               , 32.0},	// - [temperature F]
-	{"rainin"       , WS_RAIN_HOUR       , us ,   0.39370079         ,  0.0},	// - [hourly rain in]
-	{"dailyrainin"  , WS_RAIN_DAY        , us ,   0.39370079         ,  0.0},	// - [daily rain in accumulated]
-	{"baromin"      , WS_ABS_PRESSURE    , us ,   0.0029530058646697 ,  0.0},	// - [barom in]
-	{"dewptf"       , 0                  , dp ,   0.18               , 32.0}	// - [dewpoint F]
+	{"winddir"      , WS_WIND_DIR        , ub , WS_SCALE_OFFS_TO_DEGREE , WS_OFFSET_DEFAULT},	// - [0-360]
+	{"windspeedmph" , WS_WIND_AVE        , wa , WS_SCALE_MS_TO_MPH      , WS_OFFSET_DEFAULT},	// - [mph]
+	{"windgustmph"  , WS_WIND_GUST       , wg , WS_SCALE_MS_TO_MPH      , WS_OFFSET_DEFAULT},	// - [windgustmph]
+	{"humidity"     , WS_HUMIDITY_OUT    , ub , WS_SCALE_DEFAULT        , WS_OFFSET_DEFAULT},	// - [%]
+	{"tempf"        , WS_TEMPERATURE_OUT , ss , WS_SCALE_C_TO_F         , WS_OFFSET_C_TO_F},	// - [temperature F]
+	{"rainin"       , WS_RAIN_HOUR       , us , WS_SCALE_CM_TO_IN       , WS_OFFSET_DEFAULT},	// - [hourly rain in]
+	{"dailyrainin"  , WS_RAIN_DAY        , us , WS_SCALE_CM_TO_IN       , WS_OFFSET_DEFAULT},	// - [daily rain in accumulated]
+	{"baromin"      , WS_ABS_PRESSURE    , us , WS_SCALE_HPA_TO_INHG    , WS_OFFSET_DEFAULT},	// - [barom in]
+	{"dewptf"       , 0                  , dp , WS_SCALE_C_TO_F         , WS_OFFSET_C_TO_F}		// - [dewpoint F]
 	// weather - [text] -- metar style (+RA)
 	// clouds - [text] -- SKC, FEW, SCT, BKN, OVC
 	// softwaretype - [text] ie: vws or weatherdisplay
@@ -180,7 +201,7 @@ unsigned short CWS_read_block(unsigned short ptr, char* buf);
 unsigned short CWS_read_fixed_block();	
 
 char CWS_calculate_rain_period(char done, unsigned short pos, unsigned short begin, unsigned short end);
-int CWS_calculate_rain(unsigned short current_pos, unsigned short data_count, unsigned short start);
+unsigned int CWS_calculate_rain(unsigned short current_pos, unsigned short data_count, unsigned short start);
 float CWS_dew_point(char* raw, float scale, float offset);
 
 unsigned char CWS_bcd_decode(unsigned char byte);
@@ -189,8 +210,8 @@ signed short CWS_signed_short(char* raw);
 int CWS_decode(char* raw, enum ws_types ws_type, float scale, float offset, char* result);
 
 // Weather Station properties
-char m_buf[WS_BUFFER_SIZE] = {0};	// Raw WS data
+unsigned char m_buf[WS_BUFFER_SIZE] = {0};	// Raw WS data
 
-time_t m_previous_timestamp = 0;	// Previous readout
-time_t m_timestamp = 0;			// Current readout
+time_t m_previous_timestamp = 0;		// Previous readout
+time_t m_timestamp = 0;				// Current readout
 

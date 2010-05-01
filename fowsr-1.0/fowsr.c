@@ -5,7 +5,7 @@
    This application reads WH1080 compatible devices using the USB port.
    Compatible with all USB stations that can use the EasyWeather app (www.foshk.com)
 
-   The application is generated with inspiration from the following projects:
+   The application is written with inspiration from the following projects:
 
   1)	WeatherStation.py - The pywws poject. http://pywws.googlecode.com
 
@@ -411,7 +411,7 @@ char CWS_calculate_rain_period(char done, unsigned short pos, unsigned short beg
 	return 1;
 }
 
-int CWS_calculate_rain(unsigned short current_pos, unsigned short data_count, unsigned short start)
+unsigned int CWS_calculate_rain(unsigned short current_pos, unsigned short data_count, unsigned short start)
 {
 	// Initialize rain variables
 	m_buf[WS_RAIN_HOUR]	= 0;	m_buf[WS_RAIN_HOUR +1]	= 0;
@@ -460,13 +460,13 @@ int CWS_calculate_rain(unsigned short current_pos, unsigned short data_count, un
 
 float CWS_dew_point(char* raw, float scale, float offset)
 {
+	float temp = CWS_signed_short(raw+WS_TEMPERATURE_OUT) * scale + offset;
+	float hum = raw[WS_HUMIDITY_OUT];
+
 	// Compute dew point, using formula from
 	// http://en.wikipedia.org/wiki/Dew_point.
 	float a = 17.27;
 	float b = 237.7;
-
-	float temp = CWS_signed_short(raw+WS_TEMPERATURE_OUT) * scale + offset;
-	float hum = raw[WS_HUMIDITY_OUT];
 
 	float gamma = ((a * temp) / (b + temp)) + log(hum / 100);
 
@@ -482,12 +482,18 @@ unsigned char CWS_bcd_decode(unsigned char byte)
 
 unsigned short CWS_unsigned_short(char* raw)
 {
-	return raw[0] + (raw[1] * 256);
+	return (unsigned char)raw[0] + ((unsigned char)raw[1] * 256);
 }
 
 signed short CWS_signed_short(char* raw)
 {
-	return raw[0] + (raw[1] * 256);
+	unsigned char lo = (unsigned char)raw[0];
+	unsigned char hi = (unsigned char)raw[1];
+	if (hi>128) {	// 8th bit is sign bit
+		hi=(hi-128);
+		return -(lo + (hi * 256));	// Return negative value
+	} else
+		return (lo + (hi * 256));	// Return positive value
 }
 
 int CWS_decode(char* raw, enum ws_types ws_type, float scale, float offset, char* result)
@@ -501,7 +507,9 @@ int CWS_decode(char* raw, enum ws_types ws_type, float scale, float offset, char
 			n=sprintf(result,"%.1f", fresult);
 		break;
 		case sb:
-			fresult = (signed char)raw[0] * scale + offset;
+			fresult = (unsigned char)raw[0] * scale + offset;
+			if (fresult>128)	// 8th bit is sign bit
+				fresult=-(fresult-128);	// Negative value
 			n=sprintf(result,"%.1f", fresult);
 		break;
 		case us:
@@ -529,13 +537,13 @@ int CWS_decode(char* raw, enum ws_types ws_type, float scale, float offset, char
 		break;
 		case wa:
 			// wind average - 12 bits split across a byte and a nibble
-			fresult = raw[0] + ((raw[2] & 0x0F) * 256);
+			fresult = (unsigned char)raw[0] + (((unsigned char)raw[2] & 0x0F) * 256);
 			fresult = fresult * scale + offset;
 			n=sprintf(result,"%.1f", fresult);
 		break;
 		case wg:
 			// wind gust - 12 bits split across a byte and a nibble
-			fresult = raw[0] + ((raw[1] & 0xF0) * 16);
+			fresult = (unsigned char)raw[0] + (((unsigned char)raw[1] & 0xF0) * 16);
 			fresult = fresult * scale + offset;
 			n=sprintf(result,"%.1f", fresult);
 		break;
