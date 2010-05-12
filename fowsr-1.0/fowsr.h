@@ -31,13 +31,13 @@
 #define WS_BUFFER_CHUNK		0x20	// Size of chunk received over USB
 
 // Weather Station buffer memory positions
-#define WS_DELAY		0	// Position of delay parameter
-#define WS_HUMIDITY_IN		1	// Position of inside humidity parameter
-#define WS_TEMPERATURE_IN	2	// Position of inside temperature parameter
-#define WS_HUMIDITY_OUT		4	// Position of outside humidity parameter
-#define WS_TEMPERATURE_OUT	5	// Position of outside temperature parameter
-#define WS_ABS_PRESSURE		7	// Position of absolute pressure parameter
-#define WS_WIND_AVE		9	// Position of wind direction parameter
+#define WS_DELAY		 0	// Position of delay parameter
+#define WS_HUMIDITY_IN		 1	// Position of inside humidity parameter
+#define WS_TEMPERATURE_IN	 2	// Position of inside temperature parameter
+#define WS_HUMIDITY_OUT		 4	// Position of outside humidity parameter
+#define WS_TEMPERATURE_OUT	 5	// Position of outside temperature parameter
+#define WS_ABS_PRESSURE		 7	// Position of absolute pressure parameter
+#define WS_WIND_AVE		 9	// Position of wind direction parameter
 #define WS_WIND_GUST		10	// Position of wind direction parameter
 #define WS_WIND_DIR		12	// Position of wind direction parameter
 #define WS_RAIN			13	// Position of rain parameter
@@ -46,7 +46,7 @@
 #define WS_CURRENT_POS		30	// Position of current_pos parameter
 
 // Calculated rain parameters
-// NOTE: These postions are NOT stored in the Weather Station
+// NOTE: These positions are NOT stored in the Weather Station
 #define WS_RAIN_HOUR		0x08	// Position of hourly calculated rain
 #define WS_RAIN_DAY		0x0A	// Position of daily calculated rain
 #define WS_RAIN_WEEK		0x0C	// Position of weekly calculated rain
@@ -54,14 +54,14 @@
 
 // Conversion parameters for english units
 // Second and optional third factor is for adapting to actual stored values
-#define WS_SCALE_DEFAULT	 1.0			// No scaling
+#define WS_SCALE_DEFAULT	 1.0	// No scaling
 #define WS_SCALE_MS_TO_MPH	 2.2369363         * 0.1
 #define WS_SCALE_C_TO_F		 1.8               * 0.1
 #define WS_SCALE_CM_TO_IN	 0.39370079        * 0.1 * 0.3
 #define WS_SCALE_HPA_TO_INHG	 0.029530058646697 * 0.1
 #define WS_SCALE_OFFS_TO_DEGREE	22.5
 
-#define WS_OFFSET_DEFAULT	 0.0			// No offset
+#define WS_OFFSET_DEFAULT	 0.0	// No offset
 #define WS_OFFSET_C_TO_F	32.0
 
 

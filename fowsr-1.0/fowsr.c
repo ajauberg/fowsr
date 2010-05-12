@@ -476,24 +476,26 @@ float CWS_dew_point(char* raw, float scale, float offset)
 unsigned char CWS_bcd_decode(unsigned char byte)
 {
         unsigned char lo = byte & 0x0F;
-        unsigned char hi = (byte / 16) & 0x0F;
+        unsigned char hi = byte / 16;
         return (lo + (hi * 10));
 }
 
 unsigned short CWS_unsigned_short(char* raw)
 {
-	return (unsigned char)raw[0] + ((unsigned char)raw[1] * 256);
+        unsigned char lo = (unsigned char)raw[0];
+        unsigned char hi = (unsigned char)raw[1];
+	return lo + (hi * 256);
 }
 
 signed short CWS_signed_short(char* raw)
 {
-	unsigned char lo = (unsigned char)raw[0];
-	unsigned char hi = (unsigned char)raw[1];
-	if (hi>128) {	// 8th bit is sign bit
-		hi=(hi-128);
-		return -(lo + (hi * 256));	// Return negative value
-	} else
-		return (lo + (hi * 256));	// Return positive value
+        unsigned char lo = (unsigned char)raw[0];
+        unsigned char hi = (unsigned char)raw[1];
+	unsigned short us = lo + (hi * 256);
+	if (us >= 0x8000)	// Test for sign bit
+		return -(us - 0x8000);	// Negative value
+	else
+		return us;		// Positive value
 }
 
 int CWS_decode(char* raw, enum ws_types ws_type, float scale, float offset, char* result)
@@ -507,9 +509,10 @@ int CWS_decode(char* raw, enum ws_types ws_type, float scale, float offset, char
 			n=sprintf(result,"%.1f", fresult);
 		break;
 		case sb:
-			fresult = (unsigned char)raw[0] * scale + offset;
-			if (fresult>128)	// 8th bit is sign bit
-				fresult=-(fresult-128);	// Negative value
+			fresult = (unsigned char)raw[0];
+			if (fresult >= 0x80)	// Test for sign bit
+				fresult = -(fresult - 0x80);	// Negative value
+			fresult = fresult * scale + offset;
 			n=sprintf(result,"%.1f", fresult);
 		break;
 		case us:
