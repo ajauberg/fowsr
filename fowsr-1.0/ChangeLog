@@ -20,3 +20,17 @@
 
 1.0.20100512
 	corrected negative values
+
+1.0.20100718
+	changed name of cache file to '/var/fowsr.dat'
+	added CWS_print_decoded_data() method
+	added debug print outs as command line options
+	added patch for checking valid fixed block data (thanks Timo Koivunen!)
+	added XML-format output file
+	added pywws format table
+	added CWS_write_byte() method
+	added CWS_write_block() method
+	added ws format definitions for unit settings
+	added ws format definitions for unit display settings
+	added ws format definitions for unit alarm settings
+

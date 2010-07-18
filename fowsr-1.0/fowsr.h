@@ -5,9 +5,11 @@
   - Wireless Weather Station Data Block Definition
   - Wireless Weather Station Record Format Definition
   - Wunderground Record Format
+  - PYWWS Record Format
 
   - CUSB class for open, initialize and close of USB interface
-  - CWS class for open, read, write and close of WS buffer to selected log file format
+  - CWS class for open, read, and close of WS buffer
+  - CWF class for write to selected log file format
 */
 
 #include <stdio.h>
@@ -18,6 +20,7 @@
 #include <ctype.h>
 #include <time.h>
 #include <usb.h>
+
 
 // Parameters used by the cache file
 #define ISREADING	0
@@ -52,6 +55,67 @@
 #define WS_RAIN_WEEK		0x0C	// Position of weekly calculated rain
 #define WS_RAIN_MONTH		0x0E	// Position of monthly calculated rain
 
+
+// The following setting parameters are for reference only
+// A future user interface could interpret these parameters
+// Unit settings
+#define WS_UNIT_SETTING_IN_T_C_F	0x01
+#define WS_UNIT_SETTING_OUT_T_C_F	0x02
+#define WS_UNIT_SETTING_RAIN_FALL_CM_IN	0x04
+#define WS_UNIT_SETTING_PRESSURE_HPA	0x20
+#define WS_UNIT_SETTING_PRESSURE_INHG	0x40
+#define WS_UNIT_SETTING_PRESSURE_MMHG	0x80
+// Unit wind speed settings
+#define WS_UNIT_SETTING_WIND_SPEED_MS	0x01
+#define WS_UNIT_SETTING_WIND_SPEED_KMH	0x02
+#define WS_UNIT_SETTING_WIND_SPEED_KNOT	0x04
+#define WS_UNIT_SETTING_WIND_SPEED_MH	0x08
+#define WS_UNIT_SETTING_WIND_SPEED_BFT	0x10
+// Display format 0
+#define WS_DISPLAY_FORMAT_P_ABS_REL	0x01
+#define WS_DISPLAY_FORMAT_WSP_AVG_GUST	0x02
+#define WS_DISPLAY_FORMAT_H_24_12	0x04
+#define WS_DISPLAY_FORMAT_DDMMYY_MMDDYY	0x08
+#define WS_DISPLAY_FORMAT_TS_H_12_24	0x10
+#define WS_DISPLAY_FORMAT_DATE_COMPLETE	0x20
+#define WS_DISPLAY_FORMAT_DATE_AND_WK	0x40
+#define WS_DISPLAY_FORMAT_ALARM_TIME	0x80
+// Display format 1
+#define WS_DISPLAY_FORMAT_OUT_T		0x01
+#define WS_DISPLAY_FORMAT_OUT_WINDCHILL	0x02
+#define WS_DISPLAY_FORMAT_OUT_DEW_POINT	0x04
+#define WS_DISPLAY_FORMAT_RAIN_FALL_1H	0x08
+#define WS_DISPLAY_FORMAT_RAIN_FALL_24H	0x10
+#define WS_DISPLAY_FORMAT_RAIN_FALL_WK	0x20
+#define WS_DISPLAY_FORMAT_RAIN_FALL_MO	0x40
+#define WS_DISPLAY_FORMAT_RAIN_FALL_TOT	0x80
+// Alarm enable 0
+#define WS_ALARM_ENABLE_TIME		0x02
+#define WS_ALARM_ENABLE_WIND_DIR	0x04
+#define WS_ALARM_ENABLE_IN_RH_LO	0x10
+#define WS_ALARM_ENABLE_IN_RH_HI	0x20
+#define WS_ALARM_ENABLE_OUT_RH_LO	0x40
+#define WS_ALARM_ENABLE_OUT_RH_HI	0x80
+// Alarm enable 1
+#define WS_ALARM_ENABLE_WSP_AVG		0x01
+#define WS_ALARM_ENABLE_WSP_GUST	0x02
+#define WS_ALARM_ENABLE_RAIN_FALL_1H	0x04
+#define WS_ALARM_ENABLE_RAIN_FALL_24H	0x08
+#define WS_ALARM_ENABLE_ABS_P_LO	0x10
+#define WS_ALARM_ENABLE_ABS_P_HI	0x20
+#define WS_ALARM_ENABLE_REL_P_LO	0x40
+#define WS_ALARM_ENABLE_REL_P_HI	0x80
+// Alarm enable 2
+#define WS_ALARM_ENABLE_IN_T_LO		0x01
+#define WS_ALARM_ENABLE_IN_T_HI		0x02
+#define WS_ALARM_ENABLE_OUT_T_LO	0x04
+#define WS_ALARM_ENABLE_OUT_T_HI	0x08
+#define WS_ALARM_ENABLE_WINDCHILL_LO	0x10
+#define WS_ALARM_ENABLE_WINDCHILL_HI	0x20
+#define WS_ALARM_ENABLE_DEWPOINT_LO	0x40
+#define WS_ALARM_ENABLE_DEWPOINT_HI	0x80
+
+
 // Conversion parameters for english units
 // Second and optional third factor is for adapting to actual stored values
 #define WS_SCALE_DEFAULT	 1.0	// No scaling
@@ -78,30 +142,38 @@ struct ws_record {
 	float scale;
 } ws_format[] = {
 // Up to 4080 records with this format
-	{"delay"	,  0, ub,  1.0}, // Minutes since last stored reading
-	{"hum_in"       ,  1, ub,  1.0},
-	{"temp_in"      ,  2, ss,  0.1}, // Multiply by 0.1 to get °C
-	{"hum_out"      ,  4, ub,  1.0},
-	{"temp_out"     ,  5, ss,  0.1}, // Multiply by 0.1 to get °C
-	{"abs_pressure" ,  7, us,  0.1}, // Multiply by 0.1 to get hPa
-	{"wind_ave"     ,  9, wa,  0.1}, // Multiply by 0.1 to get m/s
-	{"wind_gust"    , 10, wg,  0.1}, // Multiply by 0.1 to get m/s
-	// 11, wind speed, high bits     // Lower 4 bits are the average wind speed high bits, upper 4 bits are the gust wind speed high bits.
-	{"wind_dir"     , 12, ub,  1.0}, // Multiply by 22.5 to get ° from north
+	{"delay"	,  0, ub,  1.0}, // Minutes since last stored reading (1:240)
+	{"hum_in"       ,  1, ub,  1.0}, // Indoor relative humidity %        (1:99)    , 0xFF means invalid
+	{"temp_in"      ,  2, ss,  0.1}, // Multiply by 0.1 to get °C         (-40:+60) , 0xFFFF means invalid
+	{"hum_out"      ,  4, ub,  1.0}, // Outdoor relative humidity %       (1:99)    , 0xFF means invalid
+	{"temp_out"     ,  5, ss,  0.1}, // Multiply by 0.1 to get °C         (-40:+60) , 0xFFFF means invalid
+	{"abs_pressure" ,  7, us,  0.1}, // Multiply by 0.1 to get hPa        (920:1080), 0xFFFF means invalid
+	{"wind_ave"     ,  9, wa,  0.1}, // Multiply by 0.1 to get m/s        (0:50)    , 0xFF means invalid
+	{"wind_gust"    , 10, wg,  0.1}, // Multiply by 0.1 to get m/s        (0:50)    , 0xFF means invalid
+	// 11, wind speed, high bits     // Lower 4 bits are the average wind speed high bits, upper 4 bits are the gust wind speed high bits
+	{"wind_dir"     , 12, ub, 22.5}, // Multiply by 22.5 to get ° from north (0-15), 7th bit indicates invalid data
 	{"rain"         , 13, us,  0.3}, // Multiply by 0.3 to get mm
-	{"status"       , 15, pb,  1.0}, // 7th bit indicates loss of contact with sensors
+	{"status"       , 15, pb,  1.0}, // 6th bit indicates loss of contact with sensors, 7th bit indicates rainfall overflow
 // The lower fixed block
-	{"read_period"   , 16, ub, 1.0}, // Minutes between each stored reading
-	{"timezone"      , 24, sb, 1.0}, // Hours offset from Central European Time, so in the UK this should be set to -1. In stations without a radio controlled clock this is always zero
-	{"data_count"    , 27, us, 1.0}, // Number of stored readings. Starts at zero, rises to 4080
-	{"current_pos"   , 30, us, 1.0}, // Address of the stored reading currently being created. Starts at 256, rises to 65520 in steps of 16, then loops back to 256. The data at this address is updated every 48 seconds or so, until the read period is reached. Then the address is incremented and the next record becomes current.
-	{"rel_pressure"  , 32, us, 0.1}, // Current relative (sea level) atmospheric pressure, multiply by 0.1 to get hPa
-	{"abs_pressure"  , 34, us, 0.1}, // Current absolute atmospheric pressure, multiply by 0.1 to get hPa
-	{"date_time"     , 43, dt, 1.0}, // Current date & time
+	{"read_period"      , 16, ub, 1.0}, // Minutes between each stored reading (1:240)
+	{"units0"           , 17, ub, 1.0}, // Unit setting flags       (Bits 0,1,2,    5,6,7)
+	{"units_wind_speed" , 18, ub, 1.0}, // Unit wind speed settings (Bits 0,1,2,3,4      )
+	{"display_format0"  , 19, ub, 1.0}, // Unit display settings    (Bits 0,1,2,3,4,5,6,7)
+	{"display_format1"  , 20, ub, 1.0}, // Unit display settings    (Bits 0,1,2,3,4,5,6,7)
+	{"alarm_enable0"    , 21, ub, 1.0}, // Unit alarm settings      (Bits   1,2,  4,5,6,7)
+	{"alarm_enable1"    , 22, ub, 1.0}, // Unit alarm settings      (Bits 0,1,2,3,4,5,6,7)
+	{"alarm_enable2"    , 23, ub, 1.0}, // Unit alarm settings      (Bits 0,1,2,3,4,5,6,7)
+	{"timezone"         , 24, sb, 1.0}, // Hours offset from Central European Time, so in the UK this should be set to -1. In stations without a radio controlled clock this is always zero. 7th bit is sign bit
+	{"data_refreshed"   , 26, us, 1.0}, // PC write AA indicating setting changed, base unit clear this byte for reading back the change
+	{"data_count"       , 27, us, 1.0}, // Number of stored readings. Starts at zero, rises to 4080
+	{"current_pos"      , 30, us, 1.0}, // Address of the stored reading currently being created. Starts at 256, rises to 65520 in steps of 16, then loops back to 256. The data at this address is updated every 48 seconds or so, until the read period is reached. Then the address is incremented and the next record becomes current.
+	{"rel_pressure"     , 32, us, 0.1}, // Current relative (sea level) atmospheric pressure, multiply by 0.1 to get hPa
+	{"abs_pressure"     , 34, us, 0.1}, // Current absolute atmospheric pressure, multiply by 0.1 to get hPa
+	{"date_time"        , 43, dt, 1.0}, // Current date & time
 // Alarm settings
-	{"alarm.hum_in.hi"       , 48, ub,  1.0}, {"alarm.hum_in.lo"       , 49, ub, 1.0},
+	{"alarm.hum_in.hi"       , 48, ub,  1.0}, {"alarm.hum_in.lo"       , 49, ub, 1.0}, // Indoor relative humidity %
 	{"alarm.temp_in.hi"      , 50, ss,  0.1}, {"alarm.temp_in.lo"      , 52, ss, 0.1}, // Multiply by 0.1 to get °C
-	{"alarm.hum_out.hi"      , 54, ub,  1.0}, {"alarm.hum_out.lo"      , 55, ub, 1.0},
+	{"alarm.hum_out.hi"      , 54, ub,  1.0}, {"alarm.hum_out.lo"      , 55, ub, 1.0}, // Indoor relative humidity %
 	{"alarm.temp_out.hi"     , 56, ss,  0.1}, {"alarm.temp_out.lo"     , 58, ss, 0.1}, // Multiply by 0.1 to get °C
 	{"alarm.windchill.hi"    , 60, ss,  0.1}, {"alarm.windchill.lo"    , 62, ss, 0.1}, // Multiply by 0.1 to get °C
 	{"alarm.dewpoint.hi"     , 64, ss,  0.1}, {"alarm.dewpoint.lo"     , 66, ss, 0.1}, // Multiply by 0.1 to get °C
@@ -145,6 +217,32 @@ struct ws_record {
 };
 
 
+// Table for creating pywws format string
+// Each key specifies a (pos, type, scale) tuple that is understood by CWS_decode().
+// See http://www.jim-easterbrook.me.uk/weather/mm/ for description of data
+
+struct pywws_record {
+	char name[22];
+	int pos;
+	enum ws_types ws_type;
+	float scale;
+} pywws_format[] = {
+// Up to 4080 records with this format
+	{"delay"	,  0, ub,  1.0}, // Minutes since last stored reading (1:240)
+	{"hum_in"       ,  1, ub,  1.0}, // Indoor relative humidity %        (1:99)    , 0xFF means invalid
+	{"temp_in"      ,  2, ss,  0.1}, // Multiply by 0.1 to get °C         (-40:+60) , 0xFFFF means invalid
+	{"hum_out"      ,  4, ub,  1.0}, // Outdoor relative humidity %       (1:99)    , 0xFF means invalid
+	{"temp_out"     ,  5, ss,  0.1}, // Multiply by 0.1 to get °C         (-40:+60) , 0xFFFF means invalid
+	{"abs_pressure" ,  7, us,  0.1}, // Multiply by 0.1 to get hPa        (920:1080), 0xFFFF means invalid
+	{"wind_ave"     ,  9, wa,  0.1}, // Multiply by 0.1 to get m/s        (0:50)    , 0xFF means invalid
+	{"wind_gust"    , 10, wg,  0.1}, // Multiply by 0.1 to get m/s        (0:50)    , 0xFF means invalid
+	// 11, wind speed, high bits     // Lower 4 bits are the average wind speed high bits, upper 4 bits are the gust wind speed high bits
+	{"wind_dir"     , 12, ub,  1.0}, // Multiply by 22.5 to get ° from north (0-15), 7th bit indicates invalid data
+	{"rain"         , 13, us,  0.3}, // Multiply by 0.3 to get mm
+	{"status"       , 15, pb,  1.0}  // 6th bit indicates loss of contact with sensors, 7th bit indicates rainfall overflow
+};
+
+
 // Table for creating Wunderground format
 // Each key specifies a (pos, type, scale, offset) tuple that is understood by decode().
 // See http://weatherstation.wunderground.com/weatherstation/updateweatherstation.php
@@ -176,6 +274,13 @@ struct wug_record {
 };
 
 
+// Weather Station properties
+unsigned char m_buf[WS_BUFFER_SIZE] = {0};	// Raw WS data
+
+time_t m_previous_timestamp = 0;		// Previous readout
+time_t m_timestamp = 0;				// Current readout
+
+
 // libusb structures and functions
 struct usb_dev_handle *devh;
 struct usb_device *dev;
@@ -189,19 +294,22 @@ int CUSB_Open(int vendor, int product);
 int CUSB_Close();
 
 // Weather Station class
-void CWS_serialize(char isStoring);
+void CWS_Cache(char isStoring);
+void CWS_print_decoded_data();
 
 int CWS_Open();
 int CWS_Close();
 int CWS_Read();
-int CWS_Write(char arg, char* fname);
 
 unsigned short CWS_dec_ptr(unsigned short ptr);
 unsigned short CWS_read_block(unsigned short ptr, char* buf);
+unsigned short CWS_write_byte(unsigned short ptr, char* buf);
+unsigned short CWS_write_block(unsigned short ptr, char* buf);
 unsigned short CWS_read_fixed_block();	
 
 char CWS_calculate_rain_period(char done, unsigned short pos, unsigned short begin, unsigned short end);
 unsigned int CWS_calculate_rain(unsigned short current_pos, unsigned short data_count, unsigned short start);
+
 float CWS_dew_point(char* raw, float scale, float offset);
 
 unsigned char CWS_bcd_decode(unsigned char byte);
@@ -209,9 +317,6 @@ unsigned short CWS_unsigned_short(char* raw);
 signed short CWS_signed_short(char* raw);
 int CWS_decode(char* raw, enum ws_types ws_type, float scale, float offset, char* result);
 
-// Weather Station properties
-unsigned char m_buf[WS_BUFFER_SIZE] = {0};	// Raw WS data
-
-time_t m_previous_timestamp = 0;		// Previous readout
-time_t m_timestamp = 0;				// Current readout
+// Weather File class
+int CWF_Write(char arg, char* fname);
 

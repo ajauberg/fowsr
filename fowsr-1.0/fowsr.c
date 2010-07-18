@@ -28,6 +28,8 @@
 
 #include "fowsr.h"
 
+/***** libusb functions *****/
+
 void release_usb_device(int dummy) {
     int ret;
     ret = usb_release_interface(devh, 0);
@@ -88,6 +90,8 @@ void print_bytes(char *address, int length) {
 	puts("");
 }
 
+/***** The CUSB class *****/
+
 int CUSB_Open(int vendor, int product)
 {
 	int ret;
@@ -146,30 +150,52 @@ int CUSB_Close()
 	return ret;
 }
 
-void CWS_serialize(char isStoring)
+/***** The CWS class *****/
+
+void CWS_Cache(char isStoring)
 {
 	int n;
-	char fname[] = "//var//weather.dat";	// cache file
+	char fname[] = "//var//fowsr.dat";	// cache file
 	FILE* f;
-	if (isStoring == ISWRITING) {
-		if (f=fopen(fname,"wb")) {
-			n=fwrite(&m_timestamp,sizeof(m_timestamp),1,f);
-			n=fwrite(m_buf,sizeof(m_buf[0]),WS_BUFFER_SIZE,f);
-		}
-		print_bytes((char *)&m_timestamp, sizeof(time_t));
-	} else {
+	if (isStoring == ISREADING) {
 		if (f=fopen(fname,"rb")) {
 			n=fread(&m_previous_timestamp,sizeof(m_previous_timestamp),1,f);
 			n=fread(m_buf,sizeof(m_buf[0]),WS_BUFFER_SIZE,f);
 		}
 		print_bytes((char *)&m_previous_timestamp, sizeof(time_t));
+	} else {	// ISWRITING
+		if (f=fopen(fname,"wb")) {
+			n=fwrite(&m_timestamp,sizeof(m_timestamp),1,f);
+			n=fwrite(m_buf,sizeof(m_buf[0]),WS_BUFFER_SIZE,f);
+		}
+		print_bytes((char *)&m_timestamp, sizeof(time_t));
 	};
 	if (f) fclose(f);
 }
 
+void CWS_print_decoded_data()
+{
+	int i;
+	char s1[1000]={0},s2[1000]={0};
+	for (i=11;i<96;i++) {
+		strcpy(s1,ws_format[i].name);
+		strcat(s1,"=");
+
+		CWS_decode(&m_buf[ws_format[i].pos],
+				ws_format[i].ws_type,
+				ws_format[i].scale,
+				0.0,
+				s2);
+
+		strcat(s1,s2);
+		strcat(s1,"\n");
+		printf(s1);
+	}
+}
+
 int CWS_Open()
 {
-	CWS_serialize(ISREADING);	// Read cache file
+	CWS_Cache(ISREADING);	// Read cache file
 
 	int vendor = 0x1941;
 	int product = 0x8021; 
@@ -181,141 +207,9 @@ int CWS_Open()
 
 int CWS_Close()
 {
-	CWS_serialize(ISWRITING);	// Write cache file
+	CWS_Cache(ISWRITING);	// Write cache file
 
 	CUSB_Close();
-
-	return(0);
-}
-
-int CWS_Read()
-{
-// Read fixed block
-// - Get current_pos
-// - Get data_count
-// Read data_count records backwards from current_pos
-// Calculate timestamp and break if already read
-// Step 0x10 in the range 0x10000 to 0x100, wrap at 0x100
-// USB is read in 0x20 byte chunks, so read at odd positions only, or on even position on first read
-
-	m_timestamp = time(NULL);	// Set to current time
-	time_t timestamp = m_timestamp;	// Set to current time
-
-	int n=CWS_read_fixed_block();
-
-	unsigned short data_count;
-	data_count = CWS_unsigned_short(&m_buf[WS_DATA_COUNT]);
-	unsigned short current_pos;
-	current_pos = CWS_unsigned_short(&m_buf[WS_CURRENT_POS]);
-
-	int i;
-	for (i=0;i<data_count;i++)
-	{
-		n=0;
-		if ((current_pos % 0x20) == 0x10) {
-			// Read previous and current record on odd positions
-			n=CWS_read_block(CWS_dec_ptr(current_pos),&m_buf[CWS_dec_ptr(current_pos)]);
-		} else if (i == 0) {
-			// Read current and next record on first read on even position
-			n=CWS_read_block(current_pos,&m_buf[current_pos]);
-		};
-
-		timestamp -= m_buf[current_pos+WS_DELAY]*60;	// Update timestamp
-		if (difftime(timestamp, m_previous_timestamp) < 0)
-			break;	// All new records read
-
-		current_pos=CWS_dec_ptr(current_pos);
-	};
-
-	// Dump all weather station records
-	print_bytes(&m_buf[WS_BUFFER_START], WS_BUFFER_SIZE-WS_BUFFER_START);
-
-	return(0);
-}
-
-int CWS_Write(char arg,char* fname)
-{
-// - Get current_pos
-// - Get data_count
-// Read data_count records backwards from current_pos. 
-// Calculate timestamp and break if already written
-// Step 0x10 in the range 0x10000 to 0x100
-// Store output file in requested format
-
-	time_t timestamp = m_timestamp;	// Set to current time
-
-	unsigned short data_count;
-	data_count = CWS_unsigned_short(&m_buf[WS_DATA_COUNT]);
-	unsigned short current_pos;
-	current_pos = CWS_unsigned_short(&m_buf[WS_CURRENT_POS]);
-
-	FILE* f;
-	if (f=fopen(fname,"a+s")) {
-
-		unsigned short i;
-		for (i=0;i<data_count;i++)
-		{
-			timestamp -= m_buf[current_pos+WS_DELAY]*60;	// Update timestamp
-			if (difftime(timestamp, m_previous_timestamp) < 0)
-				break;	// All new records written
-
-			CWS_calculate_rain(current_pos, data_count, i);
-
-			int n,j;
-			char s1[1000]={0},s2[1000]={0};
-
-			switch (arg) {
-				case 'p':
-					// Save in pywws raw format
-					n=strftime(s1,100,"%Y-%m-%d %H:%M:%S", gmtime(&timestamp));
-					for (j=0;j<11;j++) {
-						strcat(s1,",");
-		
-						CWS_decode(&m_buf[current_pos+ws_format[j].pos],
-								ws_format[j].ws_type,
-								ws_format[j].scale,
-								0.0,
-								s2);
-		
-						strcat(s1,s2);
-					};
-				break;
-				case 'w':
-					// Save in Wunderground format
-					n=strftime(s1,100,"dateutc=%Y-%m-%d%20%H:%M:%S", gmtime(&timestamp));
-					for (j=0;j<9;j++) {
-						strcat(s1,"&");
-						strcat(s1,wug_format[j].name);
-						strcat(s1,"=");
-
-						if (j==5 || j==6) { // Hourly/daily rain counters
-							CWS_decode(&m_buf[wug_format[j].pos],
-									wug_format[j].ws_type,
-									wug_format[j].scale,
-									wug_format[j].offset,
-									s2);
-						} else {
-							CWS_decode(&m_buf[current_pos+wug_format[j].pos],
-									wug_format[j].ws_type,
-									wug_format[j].scale,
-									wug_format[j].offset,
-									s2);
-						}
-
-						strcat(s1,s2);
-					};
-				break;
-				default:
-					printf("Unknown log file format.\n");
-			};
-
-			strcat(s1,"\n");
-			fputs(s1,f);
-
-			current_pos=CWS_dec_ptr(current_pos);
-		};
-		fclose(f);
-	};
 
 	return(0);
 }
@@ -323,26 +217,95 @@ int CWS_Write(char arg,char* fname)
 unsigned short CWS_dec_ptr(unsigned short ptr)
 {
 	// Step backwards through buffer.
-	ptr -= WS_BUFFER_RECORD;
+	ptr -= WS_BUFFER_RECORD;             
 	if (ptr < WS_BUFFER_START)
 		// Start is reached, step to end of buffer.
 		ptr = WS_BUFFER_END;
 	return ptr;
 }
 
-unsigned short CWS_read_block(unsigned short ptr, char* buf)
+unsigned short CWS_write_byte(unsigned short ptr, char* buf)
 {
-	char buf_1 = (char)(ptr / 256) & 0xFF;
+/*
+Write one byte data to ADDR command	
+
+If data has been received and written correctly, 
+the device will return 8 bytes 0xA5 indicating the command has been carried out sucessfully.
+*/
+	char buf_1 = (char)(ptr / 256);
 	char buf_2 = (char)(ptr & 0xFF);
 	char tbuf[8];
-	tbuf[0] = 0xA1;
-	tbuf[1] = buf_1;
-	tbuf[2] = buf_2;
-	tbuf[3] = 0x20;
-	tbuf[4] = 0xA1;
-	tbuf[5] = buf_1;
-	tbuf[6] = buf_2;
-	tbuf[7] = 0x20;
+	tbuf[0] = 0xA2;		// WRITE COMMAND
+	tbuf[1] = buf_1;	// WRITE ADDRESS HIGH
+	tbuf[2] = buf_2;	// WRITE ADDRESS LOW
+	tbuf[3] = 0x20;		// END MARK
+	tbuf[4] = 0xA2;		// WRITE COMMAND
+	tbuf[5] = *buf;		// DATA TO BE WRITTEN
+	tbuf[6] = 0;		// DON'T CARE
+	tbuf[7] = 0x20;		// END MARK
+
+	int ret;
+	// Prepare write of 32-byte chunk from position ptr
+	ret = usb_control_msg(devh, USB_TYPE_CLASS + USB_RECIP_INTERFACE, 9, 0x200, 0, tbuf, 8, 1000);
+	// Write 32-byte chunk from buffer buf
+	ret = usb_interrupt_write(devh, 0x81, buf, 0x20, 1000);
+	// Read 8-byte result and place in buffer tbuf
+	ret = usb_interrupt_read(devh, 0x81, tbuf, 0x08, 1000);
+
+	return ret;
+}
+
+unsigned short CWS_write_block(unsigned short ptr, char* buf)
+{
+/*
+Write 32 bytes data command	
+	
+After sending the write command, the 32 bytes data load must be sent to device within 500ms. 
+Once the 32 bytes data have been written to the EEPROM sucessfully, 
+then the device will return 8 bytes of 0xA5 telling that the data has been written correctly.
+*/
+	char buf_1 = (char)(ptr / 256);
+	char buf_2 = (char)(ptr & 0xFF);
+	char tbuf[8];
+	tbuf[0] = 0xA0;		// WRITE COMMAND
+	tbuf[1] = buf_1;	// WRITE ADDRESS HIGH
+	tbuf[2] = buf_2;	// WRITE ADDRESS LOW
+	tbuf[3] = 0x20;		// END MARK
+	tbuf[4] = 0xA0;		// WRITE COMMAND
+	tbuf[5] = buf_1;	// DON'T CARE
+	tbuf[6] = buf_2;	// DON'T CARE
+	tbuf[7] = 0x20;		// END MARK
+
+	int ret;
+	// Prepare write of 32-byte chunk from position ptr
+	ret = usb_control_msg(devh, USB_TYPE_CLASS + USB_RECIP_INTERFACE, 9, 0x200, 0, tbuf, 8, 1000);
+	// Write 32-byte chunk from buffer buf
+	ret = usb_interrupt_write(devh, 0x81, buf, 0x20, 1000);
+	// Read 8-byte result and place in buffer tbuf
+	ret = usb_interrupt_read(devh, 0x81, tbuf, 0x08, 1000);
+
+	return ret;
+}
+
+unsigned short CWS_read_block(unsigned short ptr, char* buf)
+{
+/*
+Read 32 bytes data command	
+
+After sending the read command, the device will send back 32 bytes data wihtin 100ms. 
+If not, then it means the command has not been received correctly.
+*/
+	char buf_1 = (char)(ptr / 256);
+	char buf_2 = (char)(ptr & 0xFF);
+	char tbuf[8];
+	tbuf[0] = 0xA1;		// READ COMMAND
+	tbuf[1] = buf_1;	// READ ADDRESS HIGH
+	tbuf[2] = buf_2;	// READ ADDRESS LOW
+	tbuf[3] = 0x20;		// END MARK
+	tbuf[4] = 0xA1;		// READ COMMAND
+	tbuf[5] = buf_1;	// READ ADDRESS HIGH
+	tbuf[6] = buf_2;	// READ ADDRESS LOW
+	tbuf[7] = 0x20;		// END MARK
 
 	int ret;
 	// Prepare read of 32-byte chunk from position ptr
@@ -360,29 +323,9 @@ unsigned short CWS_read_fixed_block()
 	for (i=0x0000;i<0x0100;i+=0x0020)
 		CWS_read_block(i, &m_buf[i]);
 
-	// Display fixed block
-	print_bytes(m_buf, 0x100);
-
-	// Dump decoded fixed block data
-	char s1[1000]={0},s2[1000]={0};
-	for (i=11;i<88;i++) {
-		strcpy(s1,ws_format[i].name);
-		strcat(s1,"=");
-
-		CWS_decode(&m_buf[ws_format[i].pos],
-				ws_format[i].ws_type,
-				ws_format[i].scale,
-				0.0,
-				s2);
-
-		strcat(s1,s2);
-		strcat(s1,"\n");
-		printf(s1);
-	}
-
 	// Check for valid data
-	if (((m_buf[0] == (char)0x55) && (m_buf[1] == (char)0xAA)) ||
-	((m_buf[0] == (char)0xFF) && (m_buf[1] == (char)0xFF)))
+	if (((m_buf[0] == (unsigned char)0x55) && (m_buf[1] == (unsigned char)0xAA)) ||
+	((m_buf[0] == (unsigned char)0xFF) && (m_buf[1] == (unsigned char)0xFF)))
 		return(i);
 	
 	printf("Fixed block is not valid.\n");
@@ -561,34 +504,219 @@ int CWS_decode(char* raw, enum ws_types ws_type, float scale, float offset, char
 	return n;
 }
 
+int CWS_Read()
+{
+// Read fixed block
+// - Get current_pos
+// - Get data_count
+// Read data_count records backwards from current_pos
+// Calculate timestamp and break if already read
+// Step 0x10 in the range 0x10000 to 0x100, wrap at 0x100
+// USB is read in 0x20 byte chunks, so read at odd positions only, or on even position on first read
+
+	m_timestamp = time(NULL);	// Set to current time
+	time_t timestamp = m_timestamp;	// Set to current time
+
+	int n=CWS_read_fixed_block();
+
+	unsigned short data_count;
+	data_count = CWS_unsigned_short(&m_buf[WS_DATA_COUNT]);
+	unsigned short current_pos;
+	current_pos = CWS_unsigned_short(&m_buf[WS_CURRENT_POS]);
+
+	int i;
+	for (i=0;i<data_count;i++)
+	{
+		n=0;
+		if ((current_pos % 0x20) == 0x10) {
+			// Read previous and current record on odd positions
+			n=CWS_read_block(CWS_dec_ptr(current_pos),&m_buf[CWS_dec_ptr(current_pos)]);
+		} else if (i == 0) {
+			// Read current and next record on first read on even position
+			n=CWS_read_block(current_pos,&m_buf[current_pos]);
+		};
+
+		timestamp -= m_buf[current_pos+WS_DELAY]*60;	// Update timestamp
+		if (difftime(timestamp, m_previous_timestamp) < 0)
+			break;	// All new records read
+
+		current_pos=CWS_dec_ptr(current_pos);
+	};
+
+	return(0);
+}
+
+/***** The CWF class *****/
+
+int CWF_Write(char arg,char* fname)
+{
+// - Get current_pos
+// - Get data_count
+// Read data_count records backwards from current_pos. 
+// Calculate timestamp and break if already written
+// Step 0x10 in the range 0x10000 to 0x100
+// Store output file in requested format
+
+	time_t timestamp = m_timestamp;	// Set to current time
+
+	unsigned short data_count;
+	data_count = CWS_unsigned_short(&m_buf[WS_DATA_COUNT]);
+	unsigned short current_pos;
+	current_pos = CWS_unsigned_short(&m_buf[WS_CURRENT_POS]);
+
+	FILE* f;
+	if (f=fopen(fname,"a+s")) {
+
+		// Header
+		switch (arg) {
+			case 'x':
+				fputs("<ws>\n",f);
+			break;
+		};
+
+		// Body
+		char s1[1000]={0},s2[1000]={0};
+		unsigned short i;
+		for (i=0;i<data_count;i++)
+		{
+			timestamp -= m_buf[current_pos+WS_DELAY]*60;	// Update timestamp
+			if (difftime(timestamp, m_previous_timestamp) < 0)
+				break;	// All new records written
+
+			CWS_calculate_rain(current_pos, data_count, i);
+
+			int n,j;
+			switch (arg) {
+				case 'p':
+					// Save in pywws raw format
+					n=strftime(s1,100,"%Y-%m-%d %H:%M:%S", gmtime(&timestamp));
+					for (j=0;j<11;j++) {
+						strcat(s1,",");
+		
+						CWS_decode(&m_buf[current_pos+pywws_format[j].pos],
+								pywws_format[j].ws_type,
+								pywws_format[j].scale,
+								0.0,
+								s2);
+		
+						strcat(s1,s2);
+					};
+				break;
+				case 'w':
+					// Save in Wunderground format
+					n=strftime(s1,100,"dateutc=%Y-%m-%d%20%H:%M:%S", gmtime(&timestamp));
+					for (j=0;j<9;j++) {
+						strcat(s1,"&");
+						strcat(s1,wug_format[j].name);
+						strcat(s1,"=");
+
+						if (j==5 || j==6) { // Hourly/daily rain counters
+							CWS_decode(&m_buf[wug_format[j].pos],
+									wug_format[j].ws_type,
+									wug_format[j].scale,
+									wug_format[j].offset,
+									s2);
+						} else {
+							CWS_decode(&m_buf[current_pos+wug_format[j].pos],
+									wug_format[j].ws_type,
+									wug_format[j].scale,
+									wug_format[j].offset,
+									s2);
+						}
+
+						strcat(s1,s2);
+					};
+				break;
+				case 'x':
+					// Save in XML format
+					n=strftime(s1,100,"  <wsd date=\"%Y-%m-%d %H:%M:%S\"", gmtime(&timestamp));
+					for (j=0;j<11;j++) {
+						strcat(s1," ");
+						strcat(s1,ws_format[j].name);
+						strcat(s1,"=\"");
+
+						CWS_decode(&m_buf[current_pos+ws_format[j].pos],
+								ws_format[j].ws_type,
+								ws_format[j].scale,
+								0.0,
+								s2);
+
+						strcat(s1,s2);
+						strcat(s1,"\"");
+					};
+					strcat(s1,">");
+				break;
+				default:
+					printf("Unknown log file format.\n");
+			};
+
+			strcat(s1,"\n");
+			fputs(s1,f);
+
+			current_pos=CWS_dec_ptr(current_pos);
+		};
+
+		// Footer
+		switch (arg) {
+			case 'x':
+				fputs("</ws>\n",f);
+			break;
+		};
+
+		fclose(f);
+	};
+
+	return(0);
+}
+
 
 int main(int argc, char **argv) {
 
 	char c;
-	while ((c = getopt (argc, argv, "pw?h")) != -1)
+	while ((c = getopt (argc, argv, "pwxbdr?h")) != -1)
 	{
 		switch (c)
 		{
+			case 'b':	// Display fixed block
+				print_bytes(m_buf, 0x100);
+			break;
+			case 'd':	// Dump decoded fixed block data
+				CWS_print_decoded_data();
+			break;
+			case 'r':	// Dump all weather station records
+				print_bytes(&m_buf[WS_BUFFER_START], WS_BUFFER_SIZE-WS_BUFFER_START);
+			break;
 			case 'p':
 				CWS_Open();
 				CWS_Read();
-				CWS_Write(c,"//var//pywws.log");
+				CWF_Write(c,"//var//pywws.log");
 				CWS_Close();
 			break;
 			case 'w':
 				CWS_Open();
 				CWS_Read();
-				CWS_Write(c,"//var//wunderground.log");
+				CWF_Write(c,"//var//wunderground.log");
+				CWS_Close();
+			break;
+			case 'x':
+				CWS_Open();
+				CWS_Read();
+				CWF_Write(c,"//var//fowsr.xml");
 				CWS_Close();
 			break;
 			default:
-				printf("\nFine Offset Weather Station Reader v1.0\n\n");
+				printf("\n");
+				printf("Fine Offset Weather Station Reader v1.0\n\n");
 				printf("(C) 2010 Arne-Jørgen Auberg (arne.jorgen.auberg@gmail.com)\n");
 				printf("Credits to Michael Pendec, Jim Easterbrook, Timo Juhani Lindfors\n\n");
 				printf("See http://fowsr.googlecode.com for more information\n\n");
 				printf("options\n");
 				printf(" -p	Logfile in pywws format\n");
-				printf(" -w	Logfile in Wunderground format\n\n");
+				printf(" -w	Logfile in Wunderground format\n");
+				printf(" -x	Logfile in XML format\n");
+				printf(" -b	Display fixed block\n");
+				printf(" -d	Display decoded fixed block data\n");
+				printf(" -r	Dump all weather station records\n\n");
 				exit (0);
 		}
 	}
