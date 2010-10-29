@@ -9,11 +9,11 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=fowsr
 PKG_VERSION:=1.0
-PKG_RELEASE:=20100718
+PKG_RELEASE:=20101010
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION)-$(PKG_RELEASE).tar.gz
 PKG_SOURCE_URL:=http://fowsr.googlecode.com/files
-PKG_MD5SUM:=34a53f0ba60a62636feef3e09d9e4312
+PKG_MD5SUM:=f177751a7e8882d4f08b5259c072d452
 PKG_CAT:=zcat
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
@@ -44,6 +44,8 @@ endef
 define Package/fowsr/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/fowsr $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/fowsr.sh $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/pwsweather.sh $(1)/usr/bin/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/wunderground.sh $(1)/usr/bin/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/pywws.sh $(1)/usr/bin/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/xml.sh $(1)/usr/bin/

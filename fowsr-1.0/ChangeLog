@@ -34,3 +34,7 @@
 	added ws format definitions for unit display settings
 	added ws format definitions for unit alarm settings
 
+1.0.20101010
+	added PWS Weather format
+	added multiple output format option 
+	patch for FreeBSD (thanks Alexander Leidinger!)

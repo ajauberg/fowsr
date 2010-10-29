@@ -6,6 +6,7 @@
   - Wireless Weather Station Record Format Definition
   - Wunderground Record Format
   - PYWWS Record Format
+  - PWS Weather Record Format
 
   - CUSB class for open, initialize and close of USB interface
   - CWS class for open, read, and close of WS buffer
@@ -243,8 +244,8 @@ struct pywws_record {
 };
 
 
-// Table for creating Wunderground format
-// Each key specifies a (pos, type, scale, offset) tuple that is understood by decode().
+// Table for creating Wunderground format string
+// Each key specifies a (pos, type, scale, offset) tuple that is understood by CWS_decode().
 // See http://weatherstation.wunderground.com/weatherstation/updateweatherstation.php
 
 struct wug_record {
@@ -271,6 +272,41 @@ struct wug_record {
 	// weather - [text] -- metar style (+RA)
 	// clouds - [text] -- SKC, FEW, SCT, BKN, OVC
 	// softwaretype - [text] ie: vws or weatherdisplay
+};
+
+
+// Table for creating PWS Weather format string
+// Each key specifies a (pos, type, scale, offset) tuple that is understood by CWS_decode().
+
+struct pws_record {
+	char name[13];
+	int pos;
+	enum ws_types ws_type;
+	float scale;
+	float offset;
+} pws_format[] = {
+	// (name, pos, type, scale, offset)
+	// ID [STATIONID as registered by pwsweather.com]
+	// PASSWORD [PASSWORD registered with this ID]
+	// dateutc - [YYYY-MM-DD+HH%3AMM%3ASS]
+	{"winddir"      , WS_WIND_DIR        , ub , WS_SCALE_OFFS_TO_DEGREE , WS_OFFSET_DEFAULT},	// - [0-360]
+	{"windspeedmph" , WS_WIND_AVE        , wa , WS_SCALE_MS_TO_MPH      , WS_OFFSET_DEFAULT},	// - [mph]
+	{"windgustmph"  , WS_WIND_GUST       , wg , WS_SCALE_MS_TO_MPH      , WS_OFFSET_DEFAULT},	// - [windgustmph]
+	{"tempf"        , WS_TEMPERATURE_OUT , ss , WS_SCALE_C_TO_F         , WS_OFFSET_C_TO_F},	// - [temperature F]
+	{"rainin"       , WS_RAIN_HOUR       , us , WS_SCALE_CM_TO_IN       , WS_OFFSET_DEFAULT},	// - [hourly rain in]
+	{"dailyrainin"  , WS_RAIN_DAY        , us , WS_SCALE_CM_TO_IN       , WS_OFFSET_DEFAULT},	// - [daily rain in accumulated]
+	// monthrainin - [monthly rain in accumulated]
+	// yearrainin - [yearly rain in accumulated]
+	{"baromin"      , WS_ABS_PRESSURE    , us , WS_SCALE_HPA_TO_INHG    , WS_OFFSET_DEFAULT},	// - [barom in]
+	{"dewptf"       , 0                  , dp , WS_SCALE_C_TO_F         , WS_OFFSET_C_TO_F},	// - [dewpoint F]
+	{"humidity"     , WS_HUMIDITY_OUT    , ub , WS_SCALE_DEFAULT        , WS_OFFSET_DEFAULT}	// - [%]
+	// weather - [text] -- metar style (+RA)
+	// solarradiation
+	// UV
+	// softwaretype - [text] ie: vws or weatherdisplay
+	// action [action=updateraw]
+	
+	// http://www.pwsweather.com/pwsupdate/pwsupdate.php?ID=STATIONID&PASSWORD=password&dateutc=2000-12-01+15%3A20%3A01&winddir=225&windspeedmph=0.0&windgustmph=0.0&tempf=34.88&rainin=0.06&dailyrainin=0.06&monthrainin=1.02&yearrainin=18.26&baromin=29.49&dewptf=30.16&humidity=83&weather=OVC&solarradiation=183&UV=5.28&softwaretype=Examplever1.1&action=updateraw
 };
 
 

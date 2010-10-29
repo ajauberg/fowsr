@@ -110,13 +110,18 @@ int CUSB_Open(int vendor, int product)
 
 	signal(SIGTERM, release_usb_device);
 
+// Uncomment the following 4 lines for FreeBSD support
+//#ifdef LIBUSB_HAS_GET_DRIVER_NP
 	ret = usb_get_driver_np(devh, 0, buf, sizeof(buf));
 	printf("usb_get_driver_np returned %d\n", ret);
 	if (ret == 0) {
 		printf("interface 0 already claimed by driver \\'%s\\', attempting to detach it\n", buf);
+//#ifdef LIBUSB_HAS_DETACH_KERNEL_DRIVER_NP
 		ret = usb_detach_kernel_driver_np(devh, 0);
 		printf("usb_detach_kernel_driver_np returned %d\n", ret);
+//#endif
 	}
+//#endif
 	ret = usb_claim_interface(devh, 0);
 	if (ret != 0) {
 		printf("claim failed with error %d\n", ret);
@@ -602,6 +607,31 @@ int CWF_Write(char arg,char* fname)
 						strcat(s1,s2);
 					};
 				break;
+				case 's':
+					// Save in PWS Weather format
+					n=strftime(s1,100,"dateutc=%Y-%m-%d+%H\%3A%M\%3A%S", gmtime(&timestamp));
+					for (j=0;j<9;j++) {
+						strcat(s1,"&");
+						strcat(s1,pws_format[j].name);
+						strcat(s1,"=");
+
+						if (j==4 || j==5) { // Hourly/daily rain counters
+							CWS_decode(&m_buf[pws_format[j].pos],
+									pws_format[j].ws_type,
+									pws_format[j].scale,
+									pws_format[j].offset,
+									s2);
+						} else {
+							CWS_decode(&m_buf[current_pos+pws_format[j].pos],
+									pws_format[j].ws_type,
+									pws_format[j].scale,
+									pws_format[j].offset,
+									s2);
+						}
+
+						strcat(s1,s2);
+					};
+				break;
 				case 'w':
 					// Save in Wunderground format
 					n=strftime(s1,100,"dateutc=%Y-%m-%d%20%H:%M:%S", gmtime(&timestamp));
@@ -672,39 +702,47 @@ int CWF_Write(char arg,char* fname)
 
 int main(int argc, char **argv) {
 
-	char c;
-	while ((c = getopt (argc, argv, "pwxbdr?h")) != -1)
+	int bflag	= 0;	// Display fixed block
+	int dflag	= 0;	// Dump decoded fixed block data
+	int rflag	= 0;	// Dump all weather station records
+
+	int readflag	= 0;	// Read the weather station or use the cache file.
+	int pflag	= 0;	// Create /var/pywws.log
+	int sflag	= 0;	// Create /var/pwsweather.log
+	int wflag	= 0;	// Create /var/wunderground.log
+	int xflag	= 0;	// Create /var/fowsr.xml
+
+	int c;
+	while ((c = getopt (argc, argv, "bdrpswx")) != -1)
 	{
 		switch (c)
 		{
 			case 'b':	// Display fixed block
-				print_bytes(m_buf, 0x100);
+				bflag	= 1;
 			break;
 			case 'd':	// Dump decoded fixed block data
-				CWS_print_decoded_data();
+				dflag	= 1;
 			break;
 			case 'r':	// Dump all weather station records
-				print_bytes(&m_buf[WS_BUFFER_START], WS_BUFFER_SIZE-WS_BUFFER_START);
+				rflag	= 1;
 			break;
 			case 'p':
-				CWS_Open();
-				CWS_Read();
-				CWF_Write(c,"//var//pywws.log");
-				CWS_Close();
+				readflag	= 1;
+				pflag		= 1;
+			break;
+			case 's':
+				readflag	= 1;
+				sflag		= 1;
 			break;
 			case 'w':
-				CWS_Open();
-				CWS_Read();
-				CWF_Write(c,"//var//wunderground.log");
-				CWS_Close();
+				readflag	= 1;
+				wflag		= 1;
 			break;
 			case 'x':
-				CWS_Open();
-				CWS_Read();
-				CWF_Write(c,"//var//fowsr.xml");
-				CWS_Close();
+				readflag	= 1;
+				xflag		= 1;
 			break;
-			default:
+			case '?':
 				printf("\n");
 				printf("Fine Offset Weather Station Reader v1.0\n\n");
 				printf("(C) 2010 Arne-Jørgen Auberg (arne.jorgen.auberg@gmail.com)\n");
@@ -712,14 +750,42 @@ int main(int argc, char **argv) {
 				printf("See http://fowsr.googlecode.com for more information\n\n");
 				printf("options\n");
 				printf(" -p	Logfile in pywws format\n");
+				printf(" -s	Logfile in PWS Weather format\n");
 				printf(" -w	Logfile in Wunderground format\n");
 				printf(" -x	Logfile in XML format\n");
 				printf(" -b	Display fixed block\n");
 				printf(" -d	Display decoded fixed block data\n");
 				printf(" -r	Dump all weather station records\n\n");
 				exit (0);
+			default:
+				abort();
 		}
 	}
 
+	
+	CWS_Open();	// Read the cache file and open the weather station
+
+	if (readflag)
+		CWS_Read();	// Read the weather station
+
+	// Write the log files
+	if (pflag)
+		CWF_Write('p',"//var//pywws.log");
+	if (sflag)
+		CWF_Write('s',"//var//pwsweather.log");
+	if (wflag)
+		CWF_Write('w',"//var//wunderground.log");
+	if (xflag)
+		CWF_Write('x',"//var//fowsr.xml");
+
+	if (bflag)	// Display fixed block
+		print_bytes(m_buf, 0x100);
+	if (dflag)	// Dump decoded fixed block data
+		CWS_print_decoded_data();
+	if (rflag)	// Dump all weather station records
+		print_bytes(&m_buf[WS_BUFFER_START], WS_BUFFER_SIZE-WS_BUFFER_START);
+
+	CWS_Close();	// Close the cache file and close the weather station
+	
 	return 0;
 }
