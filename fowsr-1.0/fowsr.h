@@ -24,15 +24,17 @@
 
 
 // Parameters used by the cache file
-#define ISREADING	0
-#define ISWRITING	1
+#define WS_CACHE_READ	0
+#define WS_CACHE_WRITE	1
 
 // Weather Station buffer parameters
 #define WS_BUFFER_SIZE		0x10000	// Size of total buffer
-#define WS_BUFFER_START		0x100	// Size of fixed block, start of up to 4080 buffer records
-#define WS_BUFFER_END		0xFFF0	// Last buffer record
+#define WS_BUFFER_START		0x100	// First address of up to 4080 buffer records
+#define WS_BUFFER_END		0xFFF0	// Start of last buffer record
 #define WS_BUFFER_RECORD	0x10	// Size of one buffer record
 #define WS_BUFFER_CHUNK		0x20	// Size of chunk received over USB
+#define WS_FIXED_BLOCK_START	0x0000	// First address of fixed block
+#define WS_FIXED_BLOCK_SIZE	0x0100	// Size of fixed block
 
 // Weather Station buffer memory positions
 #define WS_DELAY		 0	// Position of delay parameter
@@ -48,6 +50,8 @@
 #define WS_STATUS		15	// Position of status parameter
 #define WS_DATA_COUNT		27	// Position of data_count parameter
 #define WS_CURRENT_POS		30	// Position of current_pos parameter
+#define WS_CURR_REL_PRESSURE	32	// Position of current relative pressure parameter
+#define WS_CURR_ABS_PRESSURE	34	// Position of current absolute pressure parameter
 
 // Calculated rain parameters
 // NOTE: These positions are NOT stored in the Weather Station
@@ -120,9 +124,9 @@
 // Conversion parameters for english units
 // Second and optional third factor is for adapting to actual stored values
 #define WS_SCALE_DEFAULT	 1.0	// No scaling
-#define WS_SCALE_MS_TO_MPH	 2.2369363         * 0.1
+#define WS_SCALE_MS_TO_MPH	 2.2369362920544   * 0.1
 #define WS_SCALE_C_TO_F		 1.8               * 0.1
-#define WS_SCALE_CM_TO_IN	 0.39370079        * 0.1 * 0.3
+#define WS_SCALE_CM_TO_IN	 0.3937007874      * 0.1 * 0.3
 #define WS_SCALE_HPA_TO_INHG	 0.029530058646697 * 0.1
 #define WS_SCALE_OFFS_TO_DEGREE	22.5
 
@@ -168,7 +172,7 @@ struct ws_record {
 	{"data_refreshed"   , 26, us, 1.0}, // PC write AA indicating setting changed, base unit clear this byte for reading back the change
 	{"data_count"       , 27, us, 1.0}, // Number of stored readings. Starts at zero, rises to 4080
 	{"current_pos"      , 30, us, 1.0}, // Address of the stored reading currently being created. Starts at 256, rises to 65520 in steps of 16, then loops back to 256. The data at this address is updated every 48 seconds or so, until the read period is reached. Then the address is incremented and the next record becomes current.
-	{"rel_pressure"     , 32, us, 0.1}, // Current relative (sea level) atmospheric pressure, multiply by 0.1 to get hPa
+	{"rel_pressure"     , 32, us, 0.1}, // Current relative atmospheric pressure, multiply by 0.1 to get hPa
 	{"abs_pressure"     , 34, us, 0.1}, // Current absolute atmospheric pressure, multiply by 0.1 to get hPa
 	{"date_time"        , 43, dt, 1.0}, // Current date & time
 // Alarm settings
@@ -217,6 +221,10 @@ struct ws_record {
 	{"rain.month" , WS_RAIN_MONTH, us, 0.3}  // Multiply by 0.3 to get mm
 };
 
+#define	WS_LOWER_FIXED_BLOCK_START	11
+#define	WS_LOWER_FIXED_BLOCK_END	96
+#define WS_RECORDS			11
+
 
 // Table for creating pywws format string
 // Each key specifies a (pos, type, scale) tuple that is understood by CWS_decode().
@@ -242,6 +250,8 @@ struct pywws_record {
 	{"rain"         , 13, us,  0.3}, // Multiply by 0.3 to get mm
 	{"status"       , 15, pb,  1.0}  // 6th bit indicates loss of contact with sensors, 7th bit indicates rainfall overflow
 };
+
+#define WS_PYWWS_RECORDS	11
 
 
 // Table for creating Wunderground format string
@@ -274,6 +284,11 @@ struct wug_record {
 	// softwaretype - [text] ie: vws or weatherdisplay
 };
 
+#define	WS_WUG_HOURLY_RAIN	5	// Position of hourly rain parameter
+#define	WS_WUG_DAILY_RAIN	6	// Position of daily rain parameter
+#define	WS_WUG_PRESSURE		7	// Position of pressure parameter
+#define WS_WUG_RECORDS		9
+
 
 // Table for creating PWS Weather format string
 // Each key specifies a (pos, type, scale, offset) tuple that is understood by CWS_decode().
@@ -305,9 +320,11 @@ struct pws_record {
 	// UV
 	// softwaretype - [text] ie: vws or weatherdisplay
 	// action [action=updateraw]
-	
-	// http://www.pwsweather.com/pwsupdate/pwsupdate.php?ID=STATIONID&PASSWORD=password&dateutc=2000-12-01+15%3A20%3A01&winddir=225&windspeedmph=0.0&windgustmph=0.0&tempf=34.88&rainin=0.06&dailyrainin=0.06&monthrainin=1.02&yearrainin=18.26&baromin=29.49&dewptf=30.16&humidity=83&weather=OVC&solarradiation=183&UV=5.28&softwaretype=Examplever1.1&action=updateraw
 };
+
+#define	WS_PWS_HOURLY_RAIN	4	// Position of hourly rain parameter
+#define	WS_PWS_DAILY_RAIN	5	// Position of daily rain parameter
+#define WS_PWS_RECORDS		9
 
 
 // Weather Station properties
@@ -317,17 +334,22 @@ time_t m_previous_timestamp = 0;		// Previous readout
 time_t m_timestamp = 0;				// Current readout
 
 
+void print_bytes(char *address, int len);
+
 // libusb structures and functions
 struct usb_dev_handle *devh;
 struct usb_device *dev;
 
 void list_devices();
 struct usb_device *find_device(int vendor, int product);
-void print_bytes(char *address, int len);
 
 // USB class
 int CUSB_Open(int vendor, int product);
-int CUSB_Close();
+void CUSB_Close();
+
+unsigned short CUSB_read_block(unsigned short ptr, char* buf);
+unsigned short CUSB_write_byte(unsigned short ptr, char* buf);
+unsigned short CUSB_write_block(unsigned short ptr, char* buf);
 
 // Weather Station class
 void CWS_Cache(char isStoring);
@@ -335,12 +357,10 @@ void CWS_print_decoded_data();
 
 int CWS_Open();
 int CWS_Close();
+
 int CWS_Read();
 
 unsigned short CWS_dec_ptr(unsigned short ptr);
-unsigned short CWS_read_block(unsigned short ptr, char* buf);
-unsigned short CWS_write_byte(unsigned short ptr, char* buf);
-unsigned short CWS_write_block(unsigned short ptr, char* buf);
 unsigned short CWS_read_fixed_block();	
 
 char CWS_calculate_rain_period(char done, unsigned short pos, unsigned short begin, unsigned short end);

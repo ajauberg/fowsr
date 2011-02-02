@@ -38,3 +38,9 @@
 	added PWS Weather format
 	added multiple output format option 
 	patch for FreeBSD (thanks Alexander Leidinger!)
+
+1.0.20110201
+	send relative pressure to Wunderground
+	Wunderground timestamp bug fix
+	added some defines to increase readability
+
