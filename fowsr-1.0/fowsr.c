@@ -525,10 +525,10 @@ int CWS_Read()
 		n=0;
 		if ((current_pos % WS_BUFFER_CHUNK) == WS_BUFFER_RECORD) {
 			// Read previous and current record on odd positions
-			n=CWS_read_block(CWS_dec_ptr(current_pos),&m_buf[CWS_dec_ptr(current_pos)]);
+			n=CUSB_read_block(CWS_dec_ptr(current_pos),&m_buf[CWS_dec_ptr(current_pos)]);
 		} else if (i == 0) {
 			// Read current and next record on first read on even position
-			n=CWS_read_block(current_pos,&m_buf[current_pos]);
+			n=CUSB_read_block(current_pos,&m_buf[current_pos]);
 		};
 
 		timestamp -= m_buf[current_pos+WS_DELAY]*60;	// Update timestamp
