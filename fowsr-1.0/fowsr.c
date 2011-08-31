@@ -1,6 +1,6 @@
 /*  Fine Offset Weather Station Reader - Main file
 
-   (C) Arne-Jørgen Auberg (arne.jorgen.auberg@gmail.com)
+   (C) Arne-JÃ¸rgen Auberg (arne.jorgen.auberg@gmail.com)
 
    This application reads WH1080 compatible devices using the USB port.
    Compatible with all USB stations that can use the EasyWeather app (www.foshk.com)
@@ -626,7 +626,7 @@ int CWF_Write(char arg,char* fname)
 					// Save in Wunderground format
 					n=strftime(s1,100,"dateutc=%Y-%m-%d %H:%M:%S", gmtime(&timestamp));
 					// Calculate relative pressure
-					wug_format[WS_WUG_PRESSURE].offset+=m_buf[WS_CURR_REL_PRESSURE]-m_buf[WS_CURR_ABS_PRESSURE];
+          wug_format[WS_WUG_PRESSURE].offset+=(CWS_unsigned_short(m_buf+WS_CURR_REL_PRESSURE)-CWS_unsigned_short(m_buf+WS_CURR_ABS_PRESSURE));
 					for (j=0;j<WS_WUG_RECORDS;j++) {
 						strcat(s1,"&");
 						strcat(s1,wug_format[j].name);
@@ -736,7 +736,7 @@ int main(int argc, char **argv) {
 			case '?':
 				printf("\n");
 				printf("Fine Offset Weather Station Reader v1.0\n\n");
-				printf("(C) 2010 Arne-Jørgen Auberg (arne.jorgen.auberg@gmail.com)\n");
+				printf("(C) 2010 Arne-JÃ¸rgen Auberg (arne.jorgen.auberg@gmail.com)\n");
 				printf("Credits to Michael Pendec, Jim Easterbrook, Timo Juhani Lindfors\n\n");
 				printf("See http://fowsr.googlecode.com for more information\n\n");
 				printf("options\n");
