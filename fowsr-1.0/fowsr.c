@@ -626,7 +626,7 @@ int CWF_Write(char arg,char* fname)
 					// Save in Wunderground format
 					n=strftime(s1,100,"dateutc=%Y-%m-%d %H:%M:%S", gmtime(&timestamp));
 					// Calculate relative pressure
-          wug_format[WS_WUG_PRESSURE].offset+=(CWS_unsigned_short(m_buf+WS_CURR_REL_PRESSURE)-CWS_unsigned_short(m_buf+WS_CURR_ABS_PRESSURE));
+					wug_format[WS_WUG_PRESSURE].offset+=(CWS_unsigned_short(m_buf+WS_CURR_REL_PRESSURE)-CWS_unsigned_short(m_buf+WS_CURR_ABS_PRESSURE))*(WS_SCALE_HPA_TO_INHG);
 					for (j=0;j<WS_WUG_RECORDS;j++) {
 						strcat(s1,"&");
 						strcat(s1,wug_format[j].name);

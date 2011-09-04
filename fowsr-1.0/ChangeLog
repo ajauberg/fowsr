@@ -44,3 +44,5 @@
 	Wunderground timestamp bug fix
 	added some defines to increase readability
 
+1.0.20110904
+	corrected relative pressure to Wunderground (thanks David Yon!)
