@@ -7,7 +7,7 @@ LDFLAGS += -lusb -lm
 all: $(NAME)
 
 $(NAME): $(OBJ)
-	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(LDLIBS)
+	$(CC) -o $@ $(OBJ) $(LDLIBS) $(LDFLAGS)
 
 clean:
 	-rm -f $(NAME) *.d *.o
