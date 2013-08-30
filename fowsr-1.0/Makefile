@@ -1,13 +1,10 @@
-CC = gcc
+CC = gcc -std=c99
 NAME = fowsr
 SRC = fowsr.c
-OBJ = $(subst .c,.o, $(SRC))
-LDFLAGS += -lusb -lm
+LDFLAGS += -lm -lusb
 
-all: $(NAME)
-
-$(NAME): $(OBJ)
-	$(CC) -o $@ $(OBJ) $(LDLIBS) $(LDFLAGS)
+all:
+	$(CC) -o $(NAME) $(SRC) $(LDFLAGS) -g
 
 clean:
 	-rm -f $(NAME) *.d *.o

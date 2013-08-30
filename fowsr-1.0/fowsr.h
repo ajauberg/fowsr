@@ -11,6 +11,10 @@
   - CUSB class for open, initialize and close of USB interface
   - CWS class for open, read, and close of WS buffer
   - CWF class for write to selected log file format
+
+04.06.13 Josch	parentheses for #defines to avoid side effects
+20.06.13 Josch	Format similar to WS3600 (fetch3600) to use in FHEM
+19.08.13 Josch	Dougs barometer correction from 27.09.12 included
 */
 
 #include <stdio.h>
@@ -124,10 +128,10 @@
 // Conversion parameters for english units
 // Second and optional third factor is for adapting to actual stored values
 #define WS_SCALE_DEFAULT	 1.0	// No scaling
-#define WS_SCALE_MS_TO_MPH	 2.2369362920544   * 0.1
-#define WS_SCALE_C_TO_F		 1.8               * 0.1
-#define WS_SCALE_CM_TO_IN	 0.3937007874      * 0.1 * 0.3
-#define WS_SCALE_HPA_TO_INHG	 0.029530058646697 * 0.1
+#define WS_SCALE_MS_TO_MPH	 (2.2369362920544   * 0.1)
+#define WS_SCALE_C_TO_F		 (1.8               * 0.1)
+#define WS_SCALE_CM_TO_IN	 (0.3937007874      * 0.1 * 0.3)
+#define WS_SCALE_HPA_TO_INHG	 (0.029530058646697 * 0.1)
 #define WS_SCALE_OFFS_TO_DEGREE	22.5
 
 #define WS_OFFSET_DEFAULT	 0.0	// No offset
@@ -324,8 +328,38 @@ struct pws_record {
 
 #define	WS_PWS_HOURLY_RAIN	4	// Position of hourly rain parameter
 #define	WS_PWS_DAILY_RAIN	5	// Position of daily rain parameter
+#define	WS_PWS_PRESSURE		6	// Position of pressure parameter
 #define WS_PWS_RECORDS		9
 
+// Table for decoding raw weather station data.
+// Each key specifies a (pos, type, scale) tuple that is understood by CWS_decode().
+// See http://fhem.de/commandref.html#WS3600 for description of data
+
+struct ws3600_record {
+	char name[22];
+	int pos;
+	enum ws_types ws_type;
+	float scale;
+} ws3600_record[] = {
+// Up to 4080 records with this format
+//	{"delay"	,  0, ub,  1.0}, // Minutes since last stored reading (1:240)
+	{"RHi"		,  1, ub,  1.0}, // Indoor relative humidity %        (1:99)    , 0xFF means invalid
+	{"Ti"		,  2, ss,  0.1}, // Multiply by 0.1 to get °C         (-40:+60) , 0xFFFF means invalid
+	{"RHo"		,  4, ub,  1.0}, // Outdoor relative humidity %       (1:99)    , 0xFF means invalid
+	{"To"		,  5, ss,  0.1}, // Multiply by 0.1 to get °C         (-40:+60) , 0xFFFF means invalid
+	{"AP"		,  7, us,  0.1}, // Multiply by 0.1 to get hPa        (920:1080), 0xFFFF means invalid
+	{"WS"		,  9, wa,  0.1}, // Multiply by 0.1 to get m/s        (0:50)    , 0xFF means invalid
+	{"WG"		, 10, wg,  0.1}, // Multiply by 0.1 to get m/s        (0:50)    , 0xFF means invalid
+	// 11, wind speed, high bits     // Lower 4 bits are the average wind speed high bits, upper 4 bits are the gust wind speed high bits
+	{"DIR"		, 12, ub, 22.5}, // Multiply by 22.5 to get ° from north (0-15), 7th bit indicates invalid data
+	{"Rtot"         , 13, us,  0.35},// Multiply by 0.3 to get mm
+	{"state"	, 15, pb,  1.0}, // 6th bit indicates loss of contact with sensors, 7th bit indicates rainfall overflow
+// The lower fixed block
+//	{"Timin"	,104, ss,  0.1},
+//	{"DTimin"       ,166, dt,  1.0}, // Multiply by 0.1 to get °C
+// End mark
+	{ "" }
+};
 
 // Weather Station properties
 unsigned char m_buf[WS_BUFFER_SIZE] = {0};	// Raw WS data
@@ -361,7 +395,7 @@ int CWS_Close();
 int CWS_Read();
 
 unsigned short CWS_dec_ptr(unsigned short ptr);
-unsigned short CWS_read_fixed_block();	
+//unsigned short CWS_read_fixed_block();	
 
 char CWS_calculate_rain_period(char done, unsigned short pos, unsigned short begin, unsigned short end);
 unsigned int CWS_calculate_rain(unsigned short current_pos, unsigned short data_count, unsigned short start);
@@ -369,10 +403,10 @@ unsigned int CWS_calculate_rain(unsigned short current_pos, unsigned short data_
 float CWS_dew_point(char* raw, float scale, float offset);
 
 unsigned char CWS_bcd_decode(unsigned char byte);
-unsigned short CWS_unsigned_short(char* raw);
-signed short CWS_signed_short(char* raw);
-int CWS_decode(char* raw, enum ws_types ws_type, float scale, float offset, char* result);
+unsigned short CWS_unsigned_short(unsigned char* raw);
+signed short CWS_signed_short(unsigned char* raw);
+int CWS_decode(unsigned char* raw, enum ws_types ws_type, float scale, float offset, char* result);
 
 // Weather File class
-int CWF_Write(char arg, char* fname);
+int CWF_Write(char arg, const char* fname, const char* ftype);
 

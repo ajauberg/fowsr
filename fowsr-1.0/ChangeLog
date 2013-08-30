@@ -46,3 +46,27 @@
 
 1.0.20110904
 	corrected relative pressure to Wunderground (thanks David Yon!)
+
+2.0.20130716 Josch
+	makefile changed (option c99, usable on UBUNTU)
+	compiler warnings removed
+	CUSB_Close(): evaluation of return codes improved
+	asserts removed
+	default log path adjustable at compile time
+	option handling completely reworked 
+	handling of negative values in CWS_signed_short() corrected
+	output only newest dataset with option -c
+	check return codes in CUSB_read_block()
+	CWS_print_decoded_data() simlified
+	fowsr.dat and Log are only written, if there were changes since last run (to save life time of a EEPROM file system)
+	new Options: -v, -f, -c, -n
+	message logging with different levels on console and/or file fowsr.msg (-v)
+	new format WS3600 (-ff)
+	data logging to stdout, usable for FHEM (-c)
+	data log path can be set per option and can contain date parts (e.g. -n/var/log/fowsr/WS-%Y.log)
+2.0.130723 Josch
+	Message levels adjusted
+	standard log path changed to /var/log/fowsr/ because /var/ is not suitable for most linux distributions
+2.0.130819
+	same calculation of relative pressure in PWS format as in WUG format
+	'\%3A' replaced by ':'

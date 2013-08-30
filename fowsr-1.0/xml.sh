@@ -2,7 +2,7 @@
 
 # Delete the log and dat file to perform complete read out, then call fowsr
 
-wsr="/usr/bin/fowsr -x"
+wsr="/usr/bin/fowsr -fx"
 dat="/var/fowsr.dat"
 LOG="/var/fowsr.xml"
 
