@@ -1,13 +1,13 @@
 #!/bin/sh
 
-# Call fowsr and upload data to PWS Weather
+# Call fowsr and upload data to Wunderground
 
-wsr="/usr/bin/fowsr -fs"
-LOG=/var/pwsweather.log
+wsr="/usr/bin/fowsr -w"
+LOG=/var/wunderground.log
 ID=$1
 PASSWORD=$2
 
-WGET=http://www.pwsweather.com/pwsupdate/pwsupdate.php
+WGET=http://weatherstation.wunderground.com/weatherstation/updateweatherstation.php
 
 WGET="$WGET?action=updateraw&ID=$ID&PASSWORD=$PASSWORD&softwaretype=fowsr&"
 

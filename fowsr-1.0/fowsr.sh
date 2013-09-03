@@ -8,7 +8,7 @@ rm -f $PWSLOG
 WUGLOG=/var/wunderground.log
 rm -f $WUGLOG
 
-wsr="/usr/bin/fowsr -fw -fs"
+wsr="/usr/bin/fowsr -ws"
 $wsr
 
 # Upload data to Wunderground

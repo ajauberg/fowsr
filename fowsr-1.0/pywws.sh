@@ -2,7 +2,7 @@
 
 # Call fowsr and upload data to pywws
 
-wsr="/usr/bin/fowsr -fp"
+wsr="/usr/bin/fowsr -p"
 LOG=/var/pywws.log
 UID=$1
 PWD=$2
