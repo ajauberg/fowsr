@@ -3,7 +3,7 @@
 # Call fowsr and upload data to PWS Weather
 
 wsr="/usr/bin/fowsr -fs"
-LOG=/var/pwsweather.log
+LOG=/var/log/fowsr/pwsweather.log
 ID=$1
 PASSWORD=$2
 

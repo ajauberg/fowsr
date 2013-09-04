@@ -2,10 +2,10 @@
 
 # Call fowsr with multiple parameters
 
-PWSLOG=/var/pwsweather.log
+PWSLOG=/var/log/fowsr/pwsweather.log
 rm -f $PWSLOG
 
-WUGLOG=/var/wunderground.log
+WUGLOG=/var/log/fowsr/wunderground.log
 rm -f $WUGLOG
 
 wsr="/usr/bin/fowsr -fw -fs"
