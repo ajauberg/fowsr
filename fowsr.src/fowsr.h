@@ -12,9 +12,10 @@
   - CWS class for open, read, and close of WS buffer
   - CWF class for write to selected log file format
 
-04.06.13 Josch	parentheses for #defines to avoid side effects
-20.06.13 Josch	Format similar to WS3600 (fetch3600) to use in FHEM
-19.08.13 Josch	Dougs barometer correction from 27.09.12 included
+04.06.13 Josch parentheses for #defines to avoid side effects
+20.06.13 Josch Format similar to WS3600 (fetch3600) to use in FHEM
+19.08.13 Josch Dougs barometer correction from 27.09.12 included
+10.09.13 Josch Typ von CUSB_read_block() geaendert
 */
 
 #include <stdio.h>
@@ -381,7 +382,7 @@ struct usb_device *find_device(int vendor, int product);
 int CUSB_Open(int vendor, int product);
 void CUSB_Close();
 
-unsigned short CUSB_read_block(unsigned short ptr, char* buf);
+short CUSB_read_block(unsigned short ptr, char* buf);
 unsigned short CUSB_write_byte(unsigned short ptr, char* buf);
 unsigned short CUSB_write_block(unsigned short ptr, char* buf);
 

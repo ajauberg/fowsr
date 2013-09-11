@@ -67,6 +67,8 @@
 2.0.130723 Josch
 	Message levels adjusted
 	standard log path changed to /var/log/fowsr/ because /var/ is not suitable for most linux distributions
-2.0.130819
+2.0.130819 Josch
 	same calculation of relative pressure in PWS format as in WUG format
 	'\%3A' replaced by ':'
+2.0.130910 Josch
+	some more error checking, return type of CUSB_read_block() corrected

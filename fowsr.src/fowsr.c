@@ -25,10 +25,12 @@
 12.07.13 Josch Check return codes in CUSB_read_block()
 16.07.13 Josch CWS_print_decoded_data() vereinfacht
 23.07.13 Josch Log Levels geändert
-19.08.13 Josch	Dougs barometer correction from 27.09.12 included
+19.08.13 Josch Dougs barometer correction from 27.09.12 included
+10.09.13 Josch cache file nur schreiben bei gueltigem Zeitstempel, Typ von CUSB_read_block() geaendert
+               Test auf falschen Zeiger und Lesefehler in CWS_Read()
 */
 
-#define VERSION "V2.0.130819"
+#define VERSION "V2.0.130910"
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -211,7 +213,7 @@ void CUSB_Close()
 }
 
 /*---------------------------------------------------------------------------*/
-unsigned short CUSB_read_block(unsigned short ptr, char* buf)
+short CUSB_read_block(unsigned short ptr, char* buf)
 {
 /*
 Read 32 bytes data command	
@@ -314,7 +316,8 @@ void CWS_Cache(char isStoring)
 {
 	int	n;
 	char	fname[] = WORKPATH"fowsr.dat";	// cache file
-	FILE*	f;
+	char	Buf[40];
+	FILE*	f = NULL;
 	
 	if (isStoring == WS_CACHE_READ) {
 		if (f=fopen(fname,"rb")) {
@@ -323,7 +326,11 @@ void CWS_Cache(char isStoring)
 		}
 	}
 	else {	// WS_CACHE_WRITE
-		if (f=fopen(fname,"wb")) {
+		if(m_timestamp<3600) {
+			strftime(Buf,sizeof(Buf),"%Y-%m-%d %H:%M:%S", localtime(&m_timestamp));
+			MsgPrintf(0, "wrong timestamp %s - cachefile not written\n", Buf);
+		}
+		else if (f=fopen(fname,"wb")) {
 			n=fwrite(&m_timestamp,sizeof(m_timestamp),1,f);
 			n=fwrite(m_buf,sizeof(m_buf[0]),WS_BUFFER_SIZE,f);
 		}
@@ -634,10 +641,16 @@ int CWS_Read()
 	unsigned short data_count = CWS_unsigned_short(&m_buf[WS_DATA_COUNT]);
 	unsigned short current_pos= CWS_unsigned_short(&m_buf[WS_CURRENT_POS]);
 
+	if(current_pos%WS_BUFFER_RECORD) {
+		MsgPrintf(0, "CWS_Read: wrong current_pos=0x%04X\n", current_pos);
+		exit(1);
+	}
 	for (unsigned short i=0; i<data_count; ) {
 		if (!(current_pos&WS_BUFFER_RECORD)) {
 			// Read 2 records on even position
 			n = CUSB_read_block(current_pos, DataBuf);
+			if(n<32)
+				exit(1);
 			i += 2;
 			NewDataFlg |= CWS_DataHasChanged(&m_buf[current_pos], DataBuf, sizeof(DataBuf));
 		}
