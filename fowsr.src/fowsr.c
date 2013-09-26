@@ -28,16 +28,19 @@
 19.08.13 Josch Dougs barometer correction from 27.09.12 included
 10.09.13 Josch cache file nur schreiben bei gueltigem Zeitstempel, Typ von CUSB_read_block() geaendert
                Test auf falschen Zeiger und Lesefehler in CWS_Read()
+26.09.13 Josch Includes moved from fowsr.h, c99 style removed
 */
 
-#define VERSION "V2.0.130910"
+#define VERSION "V2.0.130926"
 
 #include <stdio.h>
 #include <stdarg.h>
 #include <getopt.h>
+#include <math.h>
 #include <string.h>
 #include <signal.h>
-#include <math.h>
+#include <time.h>
+
 #include <usb.h>
 
 /***************** macros ****************************************************/
@@ -48,7 +51,7 @@
 //#define WORKPATH "//var//
 
 /* on PC e.g. Ubuntu */
-//#define WORKPATH "//home//user//FOWSR//fowsr-read-only//fowsr-1.0//"
+//#define WORKPATH "//home//user//FOWSR//fowsr-read-only//fowsr.src//"
 
 /* on Raspberry */
 #define WORKPATH "//var//log//fowsr//"
@@ -342,8 +345,9 @@ void CWS_Cache(char isStoring)
 void CWS_print_decoded_data()
 {
 	char s2[100];
+	int  i;
 
-	for(int i=WS_LOWER_FIXED_BLOCK_START; i<WS_LOWER_FIXED_BLOCK_END; i++) {
+	for(i=WS_LOWER_FIXED_BLOCK_START; i<WS_LOWER_FIXED_BLOCK_END; i++) {
 		CWS_decode(&m_buf[ws_format[i].pos],
 				ws_format[i].ws_type,
 				ws_format[i].scale,
@@ -409,9 +413,9 @@ unsigned short CWS_inc_ptr(unsigned short ptr)
 short CWS_DataHasChanged(unsigned char OldBuf[], unsigned char NewBuf[], size_t size)
 {	// copies size bytes from NewBuf to OldBuf, if changed
 	// returns 0 if nothing changed, otherwise 1
-	short NewDataFlg = 0;
+	short NewDataFlg = 0, i;
 	
-	for(short i=0; i<size; ++i) {
+	for(i=0; i<size; ++i) {
 		if(OldBuf[i]!=NewBuf[i]) {
 			NewDataFlg = 1;
 			MsgPrintf(3, "%04X(+%02X): %02X -> %02X\n",
@@ -640,12 +644,13 @@ int CWS_Read()
 
 	unsigned short data_count = CWS_unsigned_short(&m_buf[WS_DATA_COUNT]);
 	unsigned short current_pos= CWS_unsigned_short(&m_buf[WS_CURRENT_POS]);
+	unsigned short i;
 
 	if(current_pos%WS_BUFFER_RECORD) {
 		MsgPrintf(0, "CWS_Read: wrong current_pos=0x%04X\n", current_pos);
 		exit(1);
 	}
-	for (unsigned short i=0; i<data_count; ) {
+	for (i=0; i<data_count; ) {
 		if (!(current_pos&WS_BUFFER_RECORD)) {
 			// Read 2 records on even position
 			n = CUSB_read_block(current_pos, DataBuf);
@@ -678,9 +683,9 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 
 	unsigned short	data_count  = CWS_unsigned_short(&m_buf[WS_DATA_COUNT]);
 	unsigned short	current_pos = CWS_unsigned_short(&m_buf[WS_CURRENT_POS]);
-	unsigned short	end_pos	    = current_pos;
+	unsigned short	end_pos	    = current_pos, i;
 	char		s1[1000]    = "", s2[1000] = "";
-	int		n;
+	int		n, j;
 	FILE* 		f	    = stdout;
 	int		FileIsEmpty = 0;
 
@@ -709,7 +714,7 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 		current_pos = CWS_dec_ptr(current_pos);
 	}
 	
-	for(unsigned short i=0; i<data_count; i++)
+	for(i=0; i<data_count; i++)
 	{
 		if((arg!='c')&&(arg!='f'))
 			CWS_calculate_rain(current_pos, data_count, i);
@@ -722,7 +727,7 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 				// Output in FHEM ws3600 format
 //				n=strftime(s1,sizeof(s1),"DTime %d-%m-%Y %H:%M:%S\n", gmtime(&timestamp));
 				n=strftime(s1,sizeof(s1),"DTime %d-%m-%Y %H:%M:%S\n", localtime(&timestamp));
-				for (int j=0; ws3600_record[j].name[0]; j++) {
+				for (j=0; ws3600_record[j].name[0]; j++) {
 					int pos = ws3600_record[j].pos;
 					if(pos<WS_BUFFER_RECORD)	//record or fixed block?
 						pos += current_pos;	//record
@@ -739,7 +744,7 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 				if(FileIsEmpty)	fputs("DateTime WS", f);
 //				n=strftime(s1,sizeof(s1),"%Y-%m-%d_%H:%M:%S", gmtime(&timestamp));
 				n=strftime(s1,sizeof(s1),"%Y-%m-%d_%H:%M:%S WS", localtime(&timestamp));
-				for (int j=0; ws3600_record[j].name[0]; j++) {
+				for (j=0; ws3600_record[j].name[0]; j++) {
 					int pos = ws3600_record[j].pos;
 					if(pos<WS_BUFFER_RECORD)	//record or fixed block?
 						pos += current_pos;	//record
@@ -757,7 +762,7 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 			case 'p':
 				// Save in pywws raw format
 				n=strftime(s1,100,"%Y-%m-%d %H:%M:%S", gmtime(&timestamp));
-				for (int j=0;j<WS_PYWWS_RECORDS;j++) {
+				for (j=0;j<WS_PYWWS_RECORDS;j++) {
 					CWS_decode(&m_buf[current_pos+pywws_format[j].pos],
 							pywws_format[j].ws_type,
 							pywws_format[j].scale,
@@ -776,7 +781,7 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 						  CWS_unsigned_short(m_buf+WS_CURR_REL_PRESSURE)
 						- CWS_unsigned_short(m_buf+WS_CURR_ABS_PRESSURE)
 					   ) * WS_SCALE_HPA_TO_INHG;
-				for (int j=0;j<WS_PWS_RECORDS;j++) {
+				for (j=0;j<WS_PWS_RECORDS;j++) {
 					if (j==WS_PWS_HOURLY_RAIN || j==WS_PWS_DAILY_RAIN) {
 						CWS_decode(&m_buf[pws_format[j].pos],
 								pws_format[j].ws_type,
@@ -802,7 +807,7 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 						  CWS_unsigned_short(m_buf+WS_CURR_REL_PRESSURE)
 						- CWS_unsigned_short(m_buf+WS_CURR_ABS_PRESSURE)
 					   ) * WS_SCALE_HPA_TO_INHG;
-				for (int j=0;j<WS_WUG_RECORDS;j++) {
+				for (j=0;j<WS_WUG_RECORDS;j++) {
 					if (j==WS_WUG_HOURLY_RAIN || j==WS_WUG_DAILY_RAIN) {
 						CWS_decode(&m_buf[wug_format[j].pos],
 								wug_format[j].ws_type,
@@ -822,7 +827,7 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 			case 'x':
 				// Save in XML format
 				n=strftime(s1,100,"  <wsd date=\"%Y-%m-%d %H:%M:%S\"", gmtime(&timestamp));
-				for (int j=0;j<WS_RECORDS;j++) {
+				for (j=0;j<WS_RECORDS;j++) {
 					CWS_decode(&m_buf[current_pos+ws_format[j].pos],
 							ws_format[j].ws_type,
 							ws_format[j].scale,
@@ -964,8 +969,9 @@ int main(int argc, char **argv)
 	strftime(Buf, sizeof(Buf), "%Y-%m-%d %H:%M:%S", localtime(&tAkt));
 	Buf2[0] = '\0';
 	if(vLevel>=3) {
+		int i;
 		strcpy(Buf2, " Cmd:");
-		for(int i=0; i<argc; ++i) {
+		for(i=0; i<argc; ++i) {
 			sprintf(Buf2+strlen(Buf2), " %s", argv[i]);
                 }
 	}

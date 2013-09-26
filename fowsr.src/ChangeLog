@@ -72,3 +72,5 @@
 	'\%3A' replaced by ':'
 2.0.130910 Josch
 	some more error checking, return type of CUSB_read_block() corrected
+2.0.130926 Josch
+	c99 style removed because of incompatibility with OpenWrt

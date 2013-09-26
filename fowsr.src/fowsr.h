@@ -16,17 +16,8 @@
 20.06.13 Josch Format similar to WS3600 (fetch3600) to use in FHEM
 19.08.13 Josch Dougs barometer correction from 27.09.12 included
 10.09.13 Josch Typ von CUSB_read_block() geaendert
+26.09.13 Josch Includes moved to fowsr.c, c99 style removed
 */
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <assert.h>
-#include <signal.h>
-#include <ctype.h>
-#include <time.h>
-#include <usb.h>
-
 
 // Parameters used by the cache file
 #define WS_CACHE_READ	0
