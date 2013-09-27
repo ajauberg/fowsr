@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2010-2012 OpenWrt.org
+# Copyright (C) 2010-2013 OpenWrt.org
 #
 # This is free software, licensed under the GNU General Public License v2.
 # See /LICENSE for more information.
@@ -13,7 +13,7 @@ PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=http://fowsr.googlecode.com/svn/tags/Releases/
-PKG_MD5SUM:=0ad136f8cb4073272f115641d77281d9
+PKG_MD5SUM:=686019f509cabd2e34a24607b7671565
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME).src
 
