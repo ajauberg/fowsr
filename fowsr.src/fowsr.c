@@ -29,9 +29,11 @@
 10.09.13 Josch cache file nur schreiben bei gueltigem Zeitstempel, Typ von CUSB_read_block() geaendert
                Test auf falschen Zeiger und Lesefehler in CWS_Read()
 26.09.13 Josch Includes moved from fowsr.h, c99 style removed
+01.10.13 Josch default name of fhem logfile changed, msg if log could not be opened,
+	       delimiters for WUG changed
 */
 
-#define VERSION "V2.0.130926"
+#define VERSION "V2.0.131001"
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -694,8 +696,10 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 		f = fopen(s1,"rt");
 		if(f) fclose(f); else FileIsEmpty = 1;
 		f = fopen(s1,"a+t");
-		if(!f)
+		if(!f) {
+			MsgPrintf(0, "Could not %s %s\n", FileIsEmpty ? "create":"open", s1);
 			return -1;
+		}
 	}
 
 	if((old_pos==0)||(old_pos==0xFFFF))	//cachefile empty or empty eeprom was read
@@ -800,7 +804,7 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 			break;
 			case 'w':
 				// Save in Wunderground format
-				n=strftime(s1,100,"dateutc=%Y-%m-%d %H:%M:%S", gmtime(&timestamp));
+				n=strftime(s1,100,"dateutc=%Y-%m-%d+%H%%3A%M%%3A%S", gmtime(&timestamp));
 				// Calculate relative pressure
 				wug_format[WS_WUG_PRESSURE].offset
 					+= (
@@ -987,7 +991,7 @@ int main(int argc, char **argv)
 		if (LogToScreen)
 			CWF_Write('c', "", "");
 		if (fflag)
-			CWF_Write('f', LogPath, "fhem_ws");
+			CWF_Write('f', LogPath, "WS");
 		if (pflag)
 			CWF_Write('p', LogPath, "pywws");
 		if (sflag)
