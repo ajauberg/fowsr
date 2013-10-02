@@ -31,6 +31,7 @@
 26.09.13 Josch Includes moved from fowsr.h, c99 style removed
 01.10.13 Josch default name of fhem logfile changed, msg if log could not be opened,
 	       delimiters for WUG changed
+02.10.13 Josch CWS_decode: prec depending on scale
 */
 
 #define VERSION "V2.0.131001"
@@ -565,27 +566,28 @@ signed short CWS_signed_short(unsigned char* raw)
 /*---------------------------------------------------------------------------*/
 int CWS_decode(unsigned char* raw, enum ws_types ws_type, float scale, float offset, char* result)
 {
-	int           n = 0;
+	int           n = 0, b = -(log(scale)+0.5);
 	float         fresult;
 	
+	if(b<1) b = 1;
 	if(!result) return 0;
 	else *result = '\0';
 	switch(ws_type) {
 		case ub:
 			fresult = raw[0] * scale + offset;
-			n=sprintf(result,"%.1f", fresult);
+			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		case sb:
 			fresult = (signed char)raw[0] * scale + offset;
-			n=sprintf(result,"%.1f", fresult);
+			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		case us:
 			fresult = CWS_unsigned_short(raw) * scale + offset;
-			n=sprintf(result,"%.1f", fresult);
+			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		case ss:
 			fresult = CWS_signed_short(raw) * scale + offset;
-			n=sprintf(result,"%.1f", fresult);
+			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		case dt:
 		{
@@ -608,13 +610,13 @@ int CWS_decode(unsigned char* raw, enum ws_types ws_type, float scale, float off
 			// wind average - 12 bits split across a byte and a nibble
 			fresult = raw[0] + ((raw[2] & 0x0F) * 256);
 			fresult = fresult * scale + offset;
-			n=sprintf(result,"%.1f", fresult);
+			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		case wg:
 			// wind gust - 12 bits split across a byte and a nibble
 			fresult = raw[0] + ((raw[1] & 0xF0) * 16);
 			fresult = fresult * scale + offset;
-			n=sprintf(result,"%.1f", fresult);
+			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		case dp:
 			// Scale outside temperature and calculate dew point
