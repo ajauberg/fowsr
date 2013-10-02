@@ -13,7 +13,7 @@ PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=http://fowsr.googlecode.com/svn/tags/Releases/
-PKG_MD5SUM:=97a7e8aa0d36461495c4c3481b36a0bf
+PKG_MD5SUM:=51063ab8ee9b9612f82a2785e4c975b4
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME).src
 

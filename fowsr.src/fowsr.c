@@ -34,7 +34,7 @@
 02.10.13 Josch CWS_decode: prec depending on scale
 */
 
-#define VERSION "V2.0.131001"
+#define VERSION "V2.0.131002"
 
 #include <stdio.h>
 #include <stdarg.h>
