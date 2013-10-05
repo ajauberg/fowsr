@@ -32,6 +32,7 @@
 01.10.13 Josch default name of fhem logfile changed, msg if log could not be opened,
 	       delimiters for WUG changed
 02.10.13 Josch CWS_decode: prec depending on scale
+05.10.13 Josch conversion of negative values corrected
 */
 
 #define VERSION "V2.0.131002"
@@ -555,12 +556,17 @@ unsigned char CWS_bcd_decode(unsigned char byte)
 // but -may be- for arm)
 unsigned short CWS_unsigned_short(unsigned char* raw)
 {
- 	return raw[0] + (raw[1] * 256);
+ 	return ((unsigned short)raw[1] << 8) | raw[0];
 }
 
 signed short CWS_signed_short(unsigned char* raw)
 {
- 	return raw[0] + (raw[1] * 256);
+ 	unsigned short us = ((((unsigned short)raw[1])&0x7F) << 8) | raw[0];
+	
+	if(raw[1]&0x80)	// Test for sign bit
+		return -us;	// Negative value
+	else
+		return us;	// Positive value
 }
 
 /*---------------------------------------------------------------------------*/
@@ -578,7 +584,10 @@ int CWS_decode(unsigned char* raw, enum ws_types ws_type, float scale, float off
 			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		case sb:
-			fresult = (signed char)raw[0] * scale + offset;
+			fresult = raw[0] & 0x7F;
+			if(raw[0] & 0x80)	// Test for sign bit
+				fresult -= fresult;	//negative value
+			fresult = fresult * scale + offset;
 			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		case us:

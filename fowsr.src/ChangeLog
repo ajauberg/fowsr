@@ -77,4 +77,6 @@
 2.0.131002 Josch
 	default name of fhem log changed, delimiters for WUG changed
 	output precision depending on scale
+2.0.131005 Josch
+	Conversion of negative values corrected
 

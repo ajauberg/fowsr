@@ -8,12 +8,12 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=fowsr
-PKG_VERSION:=2.0-131002
+PKG_VERSION:=2.0-131005
 PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=http://fowsr.googlecode.com/svn/tags/Releases/
-PKG_MD5SUM:=51063ab8ee9b9612f82a2785e4c975b4
+PKG_MD5SUM:=7f48b2072a8f90660fc16c960a3f38da
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME).src
 
