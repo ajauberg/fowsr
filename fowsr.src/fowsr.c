@@ -35,7 +35,7 @@
 05.10.13 Josch conversion of negative values corrected
 */
 
-#define VERSION "V2.0.131002"
+#define VERSION "V2.0.131005"
 
 #include <stdio.h>
 #include <stdarg.h>
