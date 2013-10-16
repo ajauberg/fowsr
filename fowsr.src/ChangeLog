@@ -79,4 +79,8 @@
 	output precision depending on scale
 2.0.131005 Josch
 	Conversion of negative values corrected
+2.0.131015 Josch
+	calculation of rain and rel. pressure corrected
+	output rel. pressure in ws3600_format
+	checking for invalid values in CWS_decode()
 

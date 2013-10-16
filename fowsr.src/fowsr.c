@@ -33,9 +33,12 @@
 	       delimiters for WUG changed
 02.10.13 Josch CWS_decode: prec depending on scale
 05.10.13 Josch conversion of negative values corrected
+10.10.13 Josch calculation of rain and rel. pressure corrected
+11.10.13 Josch output rel. pressure in ws3600_format
+15.10.13 Josch checking for invalid values in CWS_decode()
 */
 
-#define VERSION "V2.0.131005"
+#define VERSION "V2.0.131015"
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -68,8 +71,10 @@ int		LogToScreen	= 0;	// log to screen
 int		readflag	= 0;	// Read the weather station or use the cache file.
 int		vLevel		= 0;	// print more messages (0=only Errors, 3=all)
 char		vDst		= 'c';	// print more messages ('c'=ToScreen, 'f'=ToFile, 'b'=ToBoth)
+
 unsigned short	old_pos		= 0;	// last index of previous read
 char		LogPath[255]	= "";
+float		pressOffs_hPa   = 0;
 
 /*****************************************************************************/
 #include "fowsr.h"
@@ -454,76 +459,71 @@ short CWS_read_fixed_block()
 }
 
 /*---------------------------------------------------------------------------*/
-char CWS_calculate_rain_period(char done, unsigned short pos, unsigned short begin, unsigned short end)
+int CWS_calculate_rain_period(unsigned short pos, unsigned short begin, unsigned short end)
 {
-	if (done) // Already done?
-		return 1;
+	unsigned short begin_rain = CWS_unsigned_short(&m_buf[begin]);
+	unsigned short end_rain   = CWS_unsigned_short(&m_buf[end]);
 
-	unsigned short result;
-	unsigned int begin_rain, end_rain;
-
-	begin_rain = CWS_unsigned_short(&m_buf[begin]);
-	end_rain   = CWS_unsigned_short(&m_buf[end]);
-	if (begin_rain > end_rain) {	// Test for wrap around in rain counter
-		end_rain += 0x10000;	// Make sure that end rain counter always is the largest
+	if(begin_rain==0xFFFF) {
+		MsgPrintf(0, "CWS_calc_rain: invalid rain value at 0x%04X\n", begin);
+		return -1;				// invalid value
 	}
+	if(end_rain==0xFFFF) { 
+		MsgPrintf(0, "CWS_calc_rain: invalid rain value at 0x%04X\n", end);
+		return -2;				// invalid value
+	}
+	unsigned short result = end_rain - begin_rain;
 
-	result = (end_rain - begin_rain) % 0x10000;	// Squeeze the result back to a short
+	m_buf[pos]	= result & 0xFF;		// Lo byte
+	m_buf[pos+1]	= (result >> 8) & 0xFF;		// Hi byte
 
-	m_buf[pos]	= result % 0x100;		// Lo byte
-	m_buf[pos+1]	= (result / 256) % 0x100;	// Hi byte
-
-	return 1;
+	return 0;
 }
 
 /*---------------------------------------------------------------------------*/
-unsigned int CWS_calculate_rain(unsigned short current_pos, unsigned short data_count, unsigned short start)
+int CWS_calculate_rain(unsigned short current_pos, unsigned short data_count)
 {
-/* ToDo (Josch) not tested; should be reprogrammed. There is no need to calculate sums and store them
-   in the dat file. The difference from point to point (e.g. change of hour, day and so on) gives the
-   correct value. */	
 	// Initialize rain variables
 	m_buf[WS_RAIN_HOUR]	= 0;	m_buf[WS_RAIN_HOUR +1]	= 0;
 	m_buf[WS_RAIN_DAY]	= 0;	m_buf[WS_RAIN_DAY  +1]	= 0;
 	m_buf[WS_RAIN_WEEK]	= 0;	m_buf[WS_RAIN_WEEK +1]	= 0;
 	m_buf[WS_RAIN_MONTH]	= 0;	m_buf[WS_RAIN_MONTH+1]	= 0;
 
-	// Flags set when calculation is done
-	char bhour	= 0;
-	char bday	= 0;
-	char bweek	= 0;
-	char bmonth	= 0;
-
 	// Set the different time periods
-	time_t hour	=       60*60;
-	time_t day	=    24*60*60;
-	time_t week	=  7*24*60*60;
-	time_t month	= 30*24*60*60;
+	unsigned short hour	=       60;
+	unsigned short day	=    24*60;
+	unsigned short week	=  7*24*60;
+	unsigned short month	= 30*24*60;
 
 	unsigned short initial_pos = current_pos;
-	time_t timestamp = m_timestamp;	// Set to current time
+	unsigned short dt       = 0;
 
 	unsigned short i;
-	for (i=start;i<data_count;i++) {	// Calculate backwards through buffer, not all values will be calculated if buffer is too short
-		if        (difftime(m_timestamp,timestamp) > month) {
-			bmonth = CWS_calculate_rain_period(bmonth, WS_RAIN_MONTH, current_pos+WS_RAIN, initial_pos+WS_RAIN);
-
-		} else if (difftime(m_timestamp,timestamp) > week) {
-			bweek = CWS_calculate_rain_period(bweek, WS_RAIN_WEEK,    current_pos+WS_RAIN, initial_pos+WS_RAIN);
-
-		} else if (difftime(m_timestamp,timestamp) > day) {
-			bday = CWS_calculate_rain_period(bday, WS_RAIN_DAY,       current_pos+WS_RAIN, initial_pos+WS_RAIN);
-
-		} else if (difftime(m_timestamp,timestamp) > hour) {
-			bhour = CWS_calculate_rain_period(bhour, WS_RAIN_HOUR,    current_pos+WS_RAIN, initial_pos+WS_RAIN);
-
+	// Calculate backwards through buffer, not all values will be calculated if buffer is too short
+	for(i=0; i<data_count; i++) {
+		if(m_buf[current_pos+WS_DELAY]==0xFF) {
+			MsgPrintf(0, "CWS_calc_rain: invalid delay value at 0x%04X\n", current_pos+WS_DELAY);
+			return -1;
 		}
+		if       (dt >= month) {
+			CWS_calculate_rain_period(WS_RAIN_MONTH, current_pos+WS_RAIN, initial_pos+WS_RAIN);
+			break;
 
-		timestamp -= m_buf[current_pos+WS_DELAY]*60;	// Update timestamp
+		} else if(dt >= week) {
+			CWS_calculate_rain_period(WS_RAIN_WEEK,  current_pos+WS_RAIN, initial_pos+WS_RAIN);
+			week = 0xFFFF;
 
-		current_pos=CWS_dec_ptr(current_pos);
+		} else if(dt >= day) {
+			CWS_calculate_rain_period(WS_RAIN_DAY,   current_pos+WS_RAIN, initial_pos+WS_RAIN);
+			day  = 0xFFFF;
+
+		} else if(dt >= hour) {
+			CWS_calculate_rain_period(WS_RAIN_HOUR,  current_pos+WS_RAIN, initial_pos+WS_RAIN);
+			hour = 0xFFFF; //disable second calculation
+		}
+		dt         += m_buf[current_pos+WS_DELAY];	// Update time difference
+		current_pos = CWS_dec_ptr(current_pos);
 	}
-
 	return (0);
 }
 
@@ -552,8 +552,6 @@ unsigned char CWS_bcd_decode(unsigned char byte)
 }
 
 /*---------------------------------------------------------------------------*/
-//Josch: keep this 2 functions, because they also work with big endian (not needed for intel,
-// but -may be- for arm)
 unsigned short CWS_unsigned_short(unsigned char* raw)
 {
  	return ((unsigned short)raw[1] << 8) | raw[0];
@@ -572,7 +570,7 @@ signed short CWS_signed_short(unsigned char* raw)
 /*---------------------------------------------------------------------------*/
 int CWS_decode(unsigned char* raw, enum ws_types ws_type, float scale, float offset, char* result)
 {
-	int           n = 0, b = -(log(scale)+0.5);
+	int           b = -(log(scale)+0.5), i, m = 0, n = 0;
 	float         fresult;
 	
 	if(b<1) b = 1;
@@ -580,10 +578,12 @@ int CWS_decode(unsigned char* raw, enum ws_types ws_type, float scale, float off
 	else *result = '\0';
 	switch(ws_type) {
 		case ub:
+			m = 1;
 			fresult = raw[0] * scale + offset;
 			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		case sb:
+			m = 1;
 			fresult = raw[0] & 0x7F;
 			if(raw[0] & 0x80)	// Test for sign bit
 				fresult -= fresult;	//negative value
@@ -591,49 +591,65 @@ int CWS_decode(unsigned char* raw, enum ws_types ws_type, float scale, float off
 			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		case us:
+			m = 2;
 			fresult = CWS_unsigned_short(raw) * scale + offset;
 			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		case ss:
+			m = 2;
 			fresult = CWS_signed_short(raw) * scale + offset;
 			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		case dt:
 		{
 			unsigned char year, month, day, hour, minute;
-			year = CWS_bcd_decode(raw[0]);
-			month = CWS_bcd_decode(raw[1]);
-			day = CWS_bcd_decode(raw[2]);
-			hour = CWS_bcd_decode(raw[3]);
+			year   = CWS_bcd_decode(raw[0]);
+			month  = CWS_bcd_decode(raw[1]);
+			day    = CWS_bcd_decode(raw[2]);
+			hour   = CWS_bcd_decode(raw[3]);
 			minute = CWS_bcd_decode(raw[4]);
+			m = 5;
 			n=sprintf(result,"%4d-%02d-%02d %02d:%02d", year + 2000, month, day, hour, minute);
 		}
 		break;
 		case tt:
+			m = 2;
 			n=sprintf(result,"%02d:%02d", CWS_bcd_decode(raw[0]), CWS_bcd_decode(raw[1]));
 		break;
 		case pb:
+			m = 1;
 			n = sprintf(result,"%02x", raw[0]);
 		break;
 		case wa:
+			m = 3;
 			// wind average - 12 bits split across a byte and a nibble
 			fresult = raw[0] + ((raw[2] & 0x0F) * 256);
 			fresult = fresult * scale + offset;
 			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		case wg:
+			m = 3;
 			// wind gust - 12 bits split across a byte and a nibble
 			fresult = raw[0] + ((raw[1] & 0xF0) * 16);
 			fresult = fresult * scale + offset;
 			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		case dp:
+			m = 1; //error checking for delay
 			// Scale outside temperature and calculate dew point
 			fresult = CWS_dew_point(raw, scale, offset);
-			n=sprintf(result,"%.1f", fresult);
+			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		default:
 			MsgPrintf(0, "CWS_decode: Unknown type %u\n", ws_type);
+	}
+	for(i=0; i<m; ++i) {
+		if(raw[i]!=0xFF) return n;
+	}
+	if(m) {
+		MsgPrintf(0, "CWS_decode: invalid value at 0x%04X\n", raw);
+		sprintf(result,"--.-");
+		n = 0;
 	}
 	return n;
 }
@@ -655,9 +671,9 @@ int CWS_Read()
 	int 		n, NewDataFlg = CWS_read_fixed_block();
 	unsigned char	DataBuf[WS_BUFFER_CHUNK];
 
-	unsigned short data_count = CWS_unsigned_short(&m_buf[WS_DATA_COUNT]);
-	unsigned short current_pos= CWS_unsigned_short(&m_buf[WS_CURRENT_POS]);
-	unsigned short i;
+	unsigned short	data_count = CWS_unsigned_short(&m_buf[WS_DATA_COUNT]);
+	unsigned short	current_pos= CWS_unsigned_short(&m_buf[WS_CURRENT_POS]);
+	unsigned short	i;
 
 	if(current_pos%WS_BUFFER_RECORD) {
 		MsgPrintf(0, "CWS_Read: wrong current_pos=0x%04X\n", current_pos);
@@ -701,6 +717,7 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 	int		n, j;
 	FILE* 		f	    = stdout;
 	int		FileIsEmpty = 0;
+	unsigned short	dat2_count  = data_count;	//end point for rain calculation
 
 	if(arg!='c') { // open output file if neccessary and check if still empty
 		sprintf(s1, fname, ftype);
@@ -724,15 +741,16 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 	};
 
 	// Body
-	if(arg!='c') while(current_pos!=old_pos) {	// get record & time to start output from
+	if(arg!='c') while(current_pos!=old_pos) {		// get record & time to start output from
 		timestamp  -= m_buf[current_pos+WS_DELAY]*60;	// Update timestamp
 		current_pos = CWS_dec_ptr(current_pos);
+		--dat2_count;
 	}
 	
 	for(i=0; i<data_count; i++)
 	{
 		if((arg!='c')&&(arg!='f'))
-			CWS_calculate_rain(current_pos, data_count, i);
+			CWS_calculate_rain(current_pos, dat2_count+i);
 
 		if((arg!='c')&&LogToScreen&&(current_pos==end_pos))
 			break;	// current record is logged by FHEM itself if -c is set
@@ -742,16 +760,18 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 				// Output in FHEM ws3600 format
 //				n=strftime(s1,sizeof(s1),"DTime %d-%m-%Y %H:%M:%S\n", gmtime(&timestamp));
 				n=strftime(s1,sizeof(s1),"DTime %d-%m-%Y %H:%M:%S\n", localtime(&timestamp));
-				for (j=0; ws3600_record[j].name[0]; j++) {
-					int pos = ws3600_record[j].pos;
+				// Calculate relative pressure
+				ws3600_format[WS_W3600_PRESSURE].offset = pressOffs_hPa;
+				for (j=0; ws3600_format[j].name[0]; j++) {
+					int pos = ws3600_format[j].pos;
 					if(pos<WS_BUFFER_RECORD)	//record or fixed block?
 						pos += current_pos;	//record
 					CWS_decode(&m_buf[pos],
-							ws3600_record[j].ws_type,
-							ws3600_record[j].scale,
-							0.,
+							ws3600_format[j].ws_type,
+							ws3600_format[j].scale,
+							ws3600_format[j].offset,
 							s2);
-					sprintf(s1+strlen(s1), "%s %s\n", ws3600_record[j].name, s2);
+					sprintf(s1+strlen(s1), "%s %s\n", ws3600_format[j].name, s2);
 				};
 			break;
 			case 'f':
@@ -759,16 +779,18 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 				if(FileIsEmpty)	fputs("DateTime WS", f);
 //				n=strftime(s1,sizeof(s1),"%Y-%m-%d_%H:%M:%S", gmtime(&timestamp));
 				n=strftime(s1,sizeof(s1),"%Y-%m-%d_%H:%M:%S WS", localtime(&timestamp));
-				for (j=0; ws3600_record[j].name[0]; j++) {
-					int pos = ws3600_record[j].pos;
+				// Calculate relative pressure
+				ws3600_format[WS_W3600_PRESSURE].offset = pressOffs_hPa;
+				for (j=0; ws3600_format[j].name[0]; j++) {
+					int pos = ws3600_format[j].pos;
 					if(pos<WS_BUFFER_RECORD)	//record or fixed block?
 						pos += current_pos;	//record
 					if(FileIsEmpty)
-						fprintf(f, " %s", ws3600_record[j].name);
+						fprintf(f, " %s", ws3600_format[j].name);
 					CWS_decode(&m_buf[pos],
-							ws3600_record[j].ws_type,
-							ws3600_record[j].scale,
-							0.,
+							ws3600_format[j].ws_type,
+							ws3600_format[j].scale,
+							ws3600_format[j].offset,
 							s2);
 					sprintf(s1+strlen(s1), " %s", s2);
 				};
@@ -792,10 +814,8 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 				n=strftime(s1,100,"dateutc=%Y-%m-%d+%H:%M:%S", gmtime(&timestamp));
 				// Calculate relative pressure
 				pws_format[WS_PWS_PRESSURE].offset
-					+= (
-						  CWS_unsigned_short(m_buf+WS_CURR_REL_PRESSURE)
-						- CWS_unsigned_short(m_buf+WS_CURR_ABS_PRESSURE)
-					   ) * WS_SCALE_HPA_TO_INHG;
+					= pressOffs_hPa * WS_SCALE_hPa_TO_inHg;
+			
 				for (j=0;j<WS_PWS_RECORDS;j++) {
 					if (j==WS_PWS_HOURLY_RAIN || j==WS_PWS_DAILY_RAIN) {
 						CWS_decode(&m_buf[pws_format[j].pos],
@@ -818,10 +838,8 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 				n=strftime(s1,100,"dateutc=%Y-%m-%d+%H%%3A%M%%3A%S", gmtime(&timestamp));
 				// Calculate relative pressure
 				wug_format[WS_WUG_PRESSURE].offset
-					+= (
-						  CWS_unsigned_short(m_buf+WS_CURR_REL_PRESSURE)
-						- CWS_unsigned_short(m_buf+WS_CURR_ABS_PRESSURE)
-					   ) * WS_SCALE_HPA_TO_INHG;
+					= pressOffs_hPa * WS_SCALE_hPa_TO_inHg;
+
 				for (j=0;j<WS_WUG_RECORDS;j++) {
 					if (j==WS_WUG_HOURLY_RAIN || j==WS_WUG_DAILY_RAIN) {
 						CWS_decode(&m_buf[wug_format[j].pos],
@@ -998,6 +1016,13 @@ int main(int argc, char **argv)
 			if(CWS_Read())		// Read the weather station
 				NewDataFlg = 1;
 
+		//calc press. offset (representing station height)
+		pressOffs_hPa = 0.1 * (
+			CWS_unsigned_short(&m_buf[WS_CURR_REL_PRESSURE])
+		      - CWS_unsigned_short(&m_buf[WS_CURR_ABS_PRESSURE])
+		);
+		MsgPrintf(2, "pressure offset = %.1fhPa (about %.0fm a.s.l.)\n",
+			pressOffs_hPa, pressOffs_hPa*8);
 		// Write the log files
 		if (LogToScreen)
 			CWF_Write('c', "", "");

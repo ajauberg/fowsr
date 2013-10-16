@@ -17,6 +17,7 @@
 19.08.13 Josch Dougs barometer correction from 27.09.12 included
 10.09.13 Josch Typ von CUSB_read_block() geaendert
 26.09.13 Josch Includes moved to fowsr.c, c99 style removed
+15.10.13 Josch output rel. pressure in ws3600_format
 */
 
 // Parameters used by the cache file
@@ -123,7 +124,8 @@
 #define WS_SCALE_MS_TO_MPH	 (2.2369362920544   * 0.1)
 #define WS_SCALE_C_TO_F		 (1.8               * 0.1)
 #define WS_SCALE_CM_TO_IN	 (0.3937007874      * 0.1 * 0.3)
-#define WS_SCALE_HPA_TO_INHG	 (0.029530058646697 * 0.1)
+#define WS_SCALE_RAW_TO_inHg	 (0.029530058646697 * 0.1)
+#define WS_SCALE_hPa_TO_inHg	 (0.029530058646697)
 #define WS_SCALE_OFFS_TO_DEGREE	22.5
 
 #define WS_OFFSET_DEFAULT	 0.0	// No offset
@@ -226,12 +228,13 @@ struct ws_record {
 // Each key specifies a (pos, type, scale) tuple that is understood by CWS_decode().
 // See http://www.jim-easterbrook.me.uk/weather/mm/ for description of data
 
-struct pywws_record {
+/*struct pywws_record {
 	char name[22];
 	int pos;
 	enum ws_types ws_type;
 	float scale;
-} pywws_format[] = {
+}*/
+struct ws_record pywws_format[] = {
 // Up to 4080 records with this format
 	{"delay"	,  0, ub,  1.0}, // Minutes since last stored reading (1:240)
 	{"hum_in"       ,  1, ub,  1.0}, // Indoor relative humidity %        (1:99)    , 0xFF means invalid
@@ -242,7 +245,7 @@ struct pywws_record {
 	{"wind_ave"     ,  9, wa,  0.1}, // Multiply by 0.1 to get m/s        (0:50)    , 0xFF means invalid
 	{"wind_gust"    , 10, wg,  0.1}, // Multiply by 0.1 to get m/s        (0:50)    , 0xFF means invalid
 	// 11, wind speed, high bits     // Lower 4 bits are the average wind speed high bits, upper 4 bits are the gust wind speed high bits
-	{"wind_dir"     , 12, ub,  1.0}, // Multiply by 22.5 to get ° from north (0-15), 7th bit indicates invalid data
+	{"wind_dir"     , 12, ub, 22.5}, // Multiply by 22.5 to get ° from north (0-15), 7th bit indicates invalid data
 	{"rain"         , 13, us,  0.3}, // Multiply by 0.3 to get mm
 	{"status"       , 15, pb,  1.0}  // 6th bit indicates loss of contact with sensors, 7th bit indicates rainfall overflow
 };
@@ -254,12 +257,12 @@ struct pywws_record {
 // Each key specifies a (pos, type, scale, offset) tuple that is understood by CWS_decode().
 // See http://weatherstation.wunderground.com/weatherstation/updateweatherstation.php
 
-struct wug_record {
-	char name[13];
-	int pos;
+struct ws_record2 {
+	char          name[22];
+	int           pos;
 	enum ws_types ws_type;
-	float scale;
-	float offset;
+	float         scale;
+	float         offset;
 } wug_format[] = {
 	// (name, pos, type, scale, offset)
 	// action [action=updateraw]
@@ -273,7 +276,7 @@ struct wug_record {
 	{"tempf"        , WS_TEMPERATURE_OUT , ss , WS_SCALE_C_TO_F         , WS_OFFSET_C_TO_F},	// - [temperature F]
 	{"rainin"       , WS_RAIN_HOUR       , us , WS_SCALE_CM_TO_IN       , WS_OFFSET_DEFAULT},	// - [hourly rain in]
 	{"dailyrainin"  , WS_RAIN_DAY        , us , WS_SCALE_CM_TO_IN       , WS_OFFSET_DEFAULT},	// - [daily rain in accumulated]
-	{"baromin"      , WS_ABS_PRESSURE    , us , WS_SCALE_HPA_TO_INHG    , WS_OFFSET_DEFAULT},	// - [barom in]
+	{"baromin"      , WS_ABS_PRESSURE    , us , WS_SCALE_RAW_TO_inHg    , WS_OFFSET_DEFAULT},	// - [barom in]
 	{"dewptf"       , 0                  , dp , WS_SCALE_C_TO_F         , WS_OFFSET_C_TO_F}		// - [dewpoint F]
 	// weather - [text] -- metar style (+RA)
 	// clouds - [text] -- SKC, FEW, SCT, BKN, OVC
@@ -289,13 +292,14 @@ struct wug_record {
 // Table for creating PWS Weather format string
 // Each key specifies a (pos, type, scale, offset) tuple that is understood by CWS_decode().
 
-struct pws_record {
+/*struct pws_record {
 	char name[13];
 	int pos;
 	enum ws_types ws_type;
 	float scale;
 	float offset;
-} pws_format[] = {
+}*/
+struct ws_record2 pws_format[] = {
 	// (name, pos, type, scale, offset)
 	// ID [STATIONID as registered by pwsweather.com]
 	// PASSWORD [PASSWORD registered with this ID]
@@ -308,7 +312,7 @@ struct pws_record {
 	{"dailyrainin"  , WS_RAIN_DAY        , us , WS_SCALE_CM_TO_IN       , WS_OFFSET_DEFAULT},	// - [daily rain in accumulated]
 	// monthrainin - [monthly rain in accumulated]
 	// yearrainin - [yearly rain in accumulated]
-	{"baromin"      , WS_ABS_PRESSURE    , us , WS_SCALE_HPA_TO_INHG    , WS_OFFSET_DEFAULT},	// - [barom in]
+	{"baromin"      , WS_ABS_PRESSURE    , us , WS_SCALE_RAW_TO_inHg    , WS_OFFSET_DEFAULT},	// - [barom in]
 	{"dewptf"       , 0                  , dp , WS_SCALE_C_TO_F         , WS_OFFSET_C_TO_F},	// - [dewpoint F]
 	{"humidity"     , WS_HUMIDITY_OUT    , ub , WS_SCALE_DEFAULT        , WS_OFFSET_DEFAULT}	// - [%]
 	// weather - [text] -- metar style (+RA)
@@ -327,31 +331,34 @@ struct pws_record {
 // Each key specifies a (pos, type, scale) tuple that is understood by CWS_decode().
 // See http://fhem.de/commandref.html#WS3600 for description of data
 
-struct ws3600_record {
+/*struct ws3600_record {
 	char name[22];
 	int pos;
 	enum ws_types ws_type;
 	float scale;
-} ws3600_record[] = {
+}*/
+struct ws_record2 ws3600_format[] = {
 // Up to 4080 records with this format
-//	{"delay"	,  0, ub,  1.0}, // Minutes since last stored reading (1:240)
-	{"RHi"		,  1, ub,  1.0}, // Indoor relative humidity %        (1:99)    , 0xFF means invalid
-	{"Ti"		,  2, ss,  0.1}, // Multiply by 0.1 to get °C         (-40:+60) , 0xFFFF means invalid
-	{"RHo"		,  4, ub,  1.0}, // Outdoor relative humidity %       (1:99)    , 0xFF means invalid
-	{"To"		,  5, ss,  0.1}, // Multiply by 0.1 to get °C         (-40:+60) , 0xFFFF means invalid
-	{"AP"		,  7, us,  0.1}, // Multiply by 0.1 to get hPa        (920:1080), 0xFFFF means invalid
-	{"WS"		,  9, wa,  0.1}, // Multiply by 0.1 to get m/s        (0:50)    , 0xFF means invalid
-	{"WG"		, 10, wg,  0.1}, // Multiply by 0.1 to get m/s        (0:50)    , 0xFF means invalid
+//	{"delay"	,  0, ub,  1.0, 0}, // Minutes since last stored reading (1:240)
+	{"RHi"		,  1, ub,  1.0, 0}, // Indoor relative humidity %        (1:99)    , 0xFF means invalid
+	{"Ti"		,  2, ss,  0.1, 0}, // Multiply by 0.1 to get °C         (-40:+60) , 0xFFFF means invalid
+	{"RHo"		,  4, ub,  1.0, 0}, // Outdoor relative humidity %       (1:99)    , 0xFF means invalid
+	{"To"		,  5, ss,  0.1, 0}, // Multiply by 0.1 to get °C         (-40:+60) , 0xFFFF means invalid
+	{"RP"		,  7, us,  0.1, 0}, // Multiply by 0.1 to get hPa        (920:1080), 0xFFFF means invalid
+	{"WS"		,  9, wa,  0.1, 0}, // Multiply by 0.1 to get m/s        (0:50)    , 0xFF means invalid
+	{"WG"		, 10, wg,  0.1, 0}, // Multiply by 0.1 to get m/s        (0:50)    , 0xFF means invalid
 	// 11, wind speed, high bits     // Lower 4 bits are the average wind speed high bits, upper 4 bits are the gust wind speed high bits
-	{"DIR"		, 12, ub, 22.5}, // Multiply by 22.5 to get ° from north (0-15), 7th bit indicates invalid data
-	{"Rtot"         , 13, us,  0.35},// Multiply by 0.3 to get mm
-	{"state"	, 15, pb,  1.0}, // 6th bit indicates loss of contact with sensors, 7th bit indicates rainfall overflow
+	{"DIR"		, 12, ub, 22.5, 0}, // Multiply by 22.5 to get ° from north (0-15), 7th bit indicates invalid data
+	{"Rtot"         , 13, us,  0.35,0},// Multiply by 0.3 to get mm
+	{"state"	, 15, pb,  1.0, 0}, // 6th bit indicates loss of contact with sensors, 7th bit indicates rainfall overflow
 // The lower fixed block
-//	{"Timin"	,104, ss,  0.1},
-//	{"DTimin"       ,166, dt,  1.0}, // Multiply by 0.1 to get °C
+//	{"Timin"	,104, ss,  0.1, 0},
+//	{"DTimin"       ,166, dt,  1.0, 0}, // Multiply by 0.1 to get °C
 // End mark
 	{ "" }
 };
+
+#define WS_W3600_PRESSURE 4
 
 // Weather Station properties
 unsigned char m_buf[WS_BUFFER_SIZE] = {0};	// Raw WS data
@@ -389,8 +396,8 @@ int CWS_Read();
 unsigned short CWS_dec_ptr(unsigned short ptr);
 //unsigned short CWS_read_fixed_block();	
 
-char CWS_calculate_rain_period(char done, unsigned short pos, unsigned short begin, unsigned short end);
-unsigned int CWS_calculate_rain(unsigned short current_pos, unsigned short data_count, unsigned short start);
+int CWS_calculate_rain_period( unsigned short pos, unsigned short begin, unsigned short end);
+int CWS_calculate_rain(unsigned short current_pos, unsigned short data_count);
 
 float CWS_dew_point(char* raw, float scale, float offset);
 
