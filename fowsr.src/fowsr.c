@@ -36,9 +36,11 @@
 10.10.13 Josch calculation of rain and rel. pressure corrected
 11.10.13 Josch output rel. pressure in ws3600_format
 15.10.13 Josch checking for invalid values in CWS_decode()
+18.10.13 Josch time format for pws corrected
+28.03.14 Josch CWS_dew_point() corrected for °F
 */
 
-#define VERSION "V2.0.131015"
+#define VERSION "V2.0.140328"
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -505,7 +507,7 @@ int CWS_calculate_rain(unsigned short current_pos, unsigned short data_count)
 			MsgPrintf(0, "CWS_calc_rain: invalid delay value at 0x%04X\n", current_pos+WS_DELAY);
 			return -1;
 		}
-		if       (dt >= month) {
+		if      (dt >= month) {
 			CWS_calculate_rain_period(WS_RAIN_MONTH, current_pos+WS_RAIN, initial_pos+WS_RAIN);
 			break;
 
@@ -530,7 +532,7 @@ int CWS_calculate_rain(unsigned short current_pos, unsigned short data_count)
 /*---------------------------------------------------------------------------*/
 float CWS_dew_point(char* raw, float scale, float offset)
 {
-	float temp = CWS_signed_short(raw+WS_TEMPERATURE_OUT) * scale + offset;
+	float temp = CWS_signed_short(raw+WS_TEMPERATURE_OUT) * 0.1; // °C
 	float hum = raw[WS_HUMIDITY_OUT];
 
 	// Compute dew point, using formula from
@@ -540,7 +542,8 @@ float CWS_dew_point(char* raw, float scale, float offset)
 
 	float gamma = ((a * temp) / (b + temp)) + log(hum / 100);
 
-	return (b * gamma) / (a - gamma);
+	float dpoint = (b * gamma) / (a - gamma);	// °C	
+	return dpoint * 10 * scale + offset;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -810,8 +813,7 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 			break;
 			case 's':
 				// Save in PWS Weather format
-//				n=strftime(s1,100,"dateutc=%Y-%m-%d+%H\%%3A%M\%%3A%S", gmtime(&timestamp));
-				n=strftime(s1,100,"dateutc=%Y-%m-%d+%H:%M:%S", gmtime(&timestamp));
+				n=strftime(s1,100,"dateutc=%Y-%m-%d+%H%%3A%M%%3A%S", gmtime(&timestamp));
 				// Calculate relative pressure
 				pws_format[WS_PWS_PRESSURE].offset
 					= pressOffs_hPa * WS_SCALE_hPa_TO_inHg;
