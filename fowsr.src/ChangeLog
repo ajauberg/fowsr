@@ -83,4 +83,11 @@
 	calculation of rain and rel. pressure corrected
 	output rel. pressure in ws3600_format
 	checking for invalid values in CWS_decode()
-
+2.0.140328 Josch
+	time format for pws and calculation of dewpoint (°F) corrected
+2.0.140508 Josch
+	on openwrt log path back to /var/
+	checking for invalid value on wind dir
+2.0.150114 Josch
+	prevention of read errors in CWS_Read improved (thanks to Wayne!)
+		

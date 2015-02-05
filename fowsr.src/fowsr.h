@@ -18,6 +18,8 @@
 10.09.13 Josch Typ von CUSB_read_block() geaendert
 26.09.13 Josch Includes moved to fowsr.c, c99 style removed
 15.10.13 Josch output rel. pressure in ws3600_format
+07.05.14 Josch struct ws_record used for all formats
+13.05.14 Josch format wd for wind dir allows checking for invalid value
 */
 
 // Parameters used by the cache file
@@ -136,13 +138,14 @@
 // Each key specifies a (pos, type, scale) tuple that is understood by CWS_decode().
 // See http://www.jim-easterbrook.me.uk/weather/mm/ for description of data
 
-enum ws_types {ub,sb,us,ss,dt,tt,pb,wa,wg,dp};
+enum ws_types {ub,sb,us,ss,dt,tt,pb,wa,wg,dp,wd/*wind dir*/};
 
 struct ws_record {
-	char name[22];
-	int pos;
+	char	      name[22];
+	int	      pos;
 	enum ws_types ws_type;
-	float scale;
+	float	      scale;
+	float         offset;
 } ws_format[] = {
 // Up to 4080 records with this format
 	{"delay"	,  0, ub,  1.0}, // Minutes since last stored reading (1:240)
@@ -154,7 +157,7 @@ struct ws_record {
 	{"wind_ave"     ,  9, wa,  0.1}, // Multiply by 0.1 to get m/s        (0:50)    , 0xFF means invalid
 	{"wind_gust"    , 10, wg,  0.1}, // Multiply by 0.1 to get m/s        (0:50)    , 0xFF means invalid
 	// 11, wind speed, high bits     // Lower 4 bits are the average wind speed high bits, upper 4 bits are the gust wind speed high bits
-	{"wind_dir"     , 12, ub, 22.5}, // Multiply by 22.5 to get ° from north (0-15), 7th bit indicates invalid data
+	{"wind_dir"     , 12, wd, 22.5}, // Multiply by 22.5 to get ° from north (0-15), 7th bit indicates invalid data
 	{"rain"         , 13, us,  0.3}, // Multiply by 0.3 to get mm
 	{"status"       , 15, pb,  1.0}, // 6th bit indicates loss of contact with sensors, 7th bit indicates rainfall overflow
 // The lower fixed block
@@ -184,7 +187,7 @@ struct ws_record {
 	{"alarm.rel_pressure.hi" , 72, ss,  0.1}, {"alarm.rel_pressure.lo" , 74, ss, 0.1}, // Multiply by 0.1 to get hPa
 	{"alarm.wind_ave.bft"    , 76, ub,  1.0}, {"alarm.wind_ave.ms"     , 77, ub, 0.1}, // Multiply by 0.1 to get m/s
 	{"alarm.wind_gust.bft"   , 79, ub,  1.0}, {"alarm.wind_gust.ms"    , 80, ub, 0.1}, // Multiply by 0.1 to get m/s
-	{"alarm.wind_dir"        , 82, ub, 22.5},                                          // Multiply by 22.5 to get ° from north
+	{"alarm.wind_dir"        , 82, wd, 22.5},                                          // Multiply by 22.5 to get ° from north
 	{"alarm.rain.hour"       , 83, us,  0.3}, {"alarm.rain.day"        , 85, us, 0.3}, // Multiply by 0.3 to get mm
 	{"alarm.time"            , 87, tt,  1.0},
 // Maximums with timestamps
@@ -228,12 +231,6 @@ struct ws_record {
 // Each key specifies a (pos, type, scale) tuple that is understood by CWS_decode().
 // See http://www.jim-easterbrook.me.uk/weather/mm/ for description of data
 
-/*struct pywws_record {
-	char name[22];
-	int pos;
-	enum ws_types ws_type;
-	float scale;
-}*/
 struct ws_record pywws_format[] = {
 // Up to 4080 records with this format
 	{"delay"	,  0, ub,  1.0}, // Minutes since last stored reading (1:240)
@@ -245,7 +242,7 @@ struct ws_record pywws_format[] = {
 	{"wind_ave"     ,  9, wa,  0.1}, // Multiply by 0.1 to get m/s        (0:50)    , 0xFF means invalid
 	{"wind_gust"    , 10, wg,  0.1}, // Multiply by 0.1 to get m/s        (0:50)    , 0xFF means invalid
 	// 11, wind speed, high bits     // Lower 4 bits are the average wind speed high bits, upper 4 bits are the gust wind speed high bits
-	{"wind_dir"     , 12, ub, 22.5}, // Multiply by 22.5 to get ° from north (0-15), 7th bit indicates invalid data
+	{"wind_dir"     , 12, wd, 22.5}, // Multiply by 22.5 to get ° from north (0-15), 7th bit indicates invalid data
 	{"rain"         , 13, us,  0.3}, // Multiply by 0.3 to get mm
 	{"status"       , 15, pb,  1.0}  // 6th bit indicates loss of contact with sensors, 7th bit indicates rainfall overflow
 };
@@ -257,19 +254,13 @@ struct ws_record pywws_format[] = {
 // Each key specifies a (pos, type, scale, offset) tuple that is understood by CWS_decode().
 // See http://weatherstation.wunderground.com/weatherstation/updateweatherstation.php
 
-struct ws_record2 {
-	char          name[22];
-	int           pos;
-	enum ws_types ws_type;
-	float         scale;
-	float         offset;
-} wug_format[] = {
+struct ws_record wug_format[] = {
 	// (name, pos, type, scale, offset)
 	// action [action=updateraw]
 	// ID [ID as registered by wunderground.com]
 	// PASSWORD [PASSWORD registered with this ID]
 	// dateutc - [YYYY-MM-DD HH:MM:SS (mysql format)]
-	{"winddir"      , WS_WIND_DIR        , ub , WS_SCALE_OFFS_TO_DEGREE , WS_OFFSET_DEFAULT},	// - [0-360]
+	{"winddir"      , WS_WIND_DIR        , wd , WS_SCALE_OFFS_TO_DEGREE , WS_OFFSET_DEFAULT},	// - [0-360]
 	{"windspeedmph" , WS_WIND_AVE        , wa , WS_SCALE_MS_TO_MPH      , WS_OFFSET_DEFAULT},	// - [mph]
 	{"windgustmph"  , WS_WIND_GUST       , wg , WS_SCALE_MS_TO_MPH      , WS_OFFSET_DEFAULT},	// - [windgustmph]
 	{"humidity"     , WS_HUMIDITY_OUT    , ub , WS_SCALE_DEFAULT        , WS_OFFSET_DEFAULT},	// - [%]
@@ -291,20 +282,12 @@ struct ws_record2 {
 
 // Table for creating PWS Weather format string
 // Each key specifies a (pos, type, scale, offset) tuple that is understood by CWS_decode().
-
-/*struct pws_record {
-	char name[13];
-	int pos;
-	enum ws_types ws_type;
-	float scale;
-	float offset;
-}*/
-struct ws_record2 pws_format[] = {
+struct ws_record pws_format[] = {
 	// (name, pos, type, scale, offset)
 	// ID [STATIONID as registered by pwsweather.com]
 	// PASSWORD [PASSWORD registered with this ID]
 	// dateutc - [YYYY-MM-DD+HH%3AMM%3ASS]
-	{"winddir"      , WS_WIND_DIR        , ub , WS_SCALE_OFFS_TO_DEGREE , WS_OFFSET_DEFAULT},	// - [0-360]
+	{"winddir"      , WS_WIND_DIR        , wd , WS_SCALE_OFFS_TO_DEGREE , WS_OFFSET_DEFAULT},	// - [0-360]
 	{"windspeedmph" , WS_WIND_AVE        , wa , WS_SCALE_MS_TO_MPH      , WS_OFFSET_DEFAULT},	// - [mph]
 	{"windgustmph"  , WS_WIND_GUST       , wg , WS_SCALE_MS_TO_MPH      , WS_OFFSET_DEFAULT},	// - [windgustmph]
 	{"tempf"        , WS_TEMPERATURE_OUT , ss , WS_SCALE_C_TO_F         , WS_OFFSET_C_TO_F},	// - [temperature F]
@@ -330,14 +313,7 @@ struct ws_record2 pws_format[] = {
 // Table for decoding raw weather station data.
 // Each key specifies a (pos, type, scale) tuple that is understood by CWS_decode().
 // See http://fhem.de/commandref.html#WS3600 for description of data
-
-/*struct ws3600_record {
-	char name[22];
-	int pos;
-	enum ws_types ws_type;
-	float scale;
-}*/
-struct ws_record2 ws3600_format[] = {
+struct ws_record ws3600_format[] = {
 // Up to 4080 records with this format
 //	{"delay"	,  0, ub,  1.0, 0}, // Minutes since last stored reading (1:240)
 	{"RHi"		,  1, ub,  1.0, 0}, // Indoor relative humidity %        (1:99)    , 0xFF means invalid
@@ -348,7 +324,7 @@ struct ws_record2 ws3600_format[] = {
 	{"WS"		,  9, wa,  0.1, 0}, // Multiply by 0.1 to get m/s        (0:50)    , 0xFF means invalid
 	{"WG"		, 10, wg,  0.1, 0}, // Multiply by 0.1 to get m/s        (0:50)    , 0xFF means invalid
 	// 11, wind speed, high bits     // Lower 4 bits are the average wind speed high bits, upper 4 bits are the gust wind speed high bits
-	{"DIR"		, 12, ub, 22.5, 0}, // Multiply by 22.5 to get ° from north (0-15), 7th bit indicates invalid data
+	{"DIR"		, 12, wd, 22.5, 0}, // Multiply by 22.5 to get ° from north (0-15), 7th bit indicates invalid data
 	{"Rtot"         , 13, us,  0.35,0},// Multiply by 0.3 to get mm
 	{"state"	, 15, pb,  1.0, 0}, // 6th bit indicates loss of contact with sensors, 7th bit indicates rainfall overflow
 // The lower fixed block
@@ -404,7 +380,7 @@ float CWS_dew_point(char* raw, float scale, float offset);
 unsigned char CWS_bcd_decode(unsigned char byte);
 unsigned short CWS_unsigned_short(unsigned char* raw);
 signed short CWS_signed_short(unsigned char* raw);
-int CWS_decode(unsigned char* raw, enum ws_types ws_type, float scale, float offset, char* result);
+int CWS_decode(unsigned char* raw, const struct ws_record* pFmt, char* result);
 
 // Weather File class
 int CWF_Write(char arg, const char* fname, const char* ftype);

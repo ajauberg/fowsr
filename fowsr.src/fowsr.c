@@ -1,6 +1,6 @@
 /*  Fine Offset Weather Station Reader - Main file
 
-   (C) Arne-JÃ¸rgen Auberg (arne.jorgen.auberg@gmail.com)
+   (C) Arne-Jørgen Auberg (arne.jorgen.auberg@gmail.com)
 
    This application reads WH1080 compatible devices using the USB port.
    Compatible with all USB stations that can use the EasyWeather app (www.foshk.com)
@@ -38,9 +38,13 @@
 15.10.13 Josch checking for invalid values in CWS_decode()
 18.10.13 Josch time format for pws corrected
 28.03.14 Josch CWS_dew_point() corrected for °F
+07.05.14 Josch log path back to /var/ (only for openwrt)
+13.05.14 Josch format wd for wind dir allows checking for invalid value
+16.05.14 Josch CWS_decode: field name printed in case of error
+14.01.15 Josch prevention of read errors in CWS_Read improved (thanks to Wayne!)
 */
 
-#define VERSION "V2.0.140328"
+#define VERSION "V2.0.150114"
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -56,14 +60,16 @@
 // WORKPATH	default path for all outputfiles (log, dat, msg)
 //		path for dat can be changed with option -n
 // LOGPATH	default full name for weather log files
-/* original, but bad */
-//#define WORKPATH "//var//
-
+#ifdef IS_OPENWRT
+/* original, but bad for most linuxes*/
+  #define WORKPATH "//var//"
+#else
 /* on PC e.g. Ubuntu */
 //#define WORKPATH "//home//user//FOWSR//fowsr-read-only//fowsr.src//"
 
 /* on Raspberry */
-#define WORKPATH "//var//log//fowsr//"
+  #define WORKPATH "//var//log//fowsr//"
+#endif
 
 #define LOGPATH WORKPATH"%s.log"
 
@@ -359,11 +365,7 @@ void CWS_print_decoded_data()
 	int  i;
 
 	for(i=WS_LOWER_FIXED_BLOCK_START; i<WS_LOWER_FIXED_BLOCK_END; i++) {
-		CWS_decode(&m_buf[ws_format[i].pos],
-				ws_format[i].ws_type,
-				ws_format[i].scale,
-				0.0,
-				s2);
+		CWS_decode(&m_buf[ws_format[i].pos], &ws_format[i], s2);
 		printf("%s=%s\n", ws_format[i].name, s2);
 	}
 }
@@ -571,18 +573,18 @@ signed short CWS_signed_short(unsigned char* raw)
 }
 
 /*---------------------------------------------------------------------------*/
-int CWS_decode(unsigned char* raw, enum ws_types ws_type, float scale, float offset, char* result)
+int CWS_decode(unsigned char* raw, const struct ws_record* pFmt, char* result)
 {
-	int           b = -(log(scale)+0.5), i, m = 0, n = 0;
+	int           b = -(log(pFmt->scale)+0.5), i, m = 0, n = 0;
 	float         fresult;
 	
 	if(b<1) b = 1;
 	if(!result) return 0;
 	else *result = '\0';
-	switch(ws_type) {
+	switch(pFmt->ws_type) {
 		case ub:
 			m = 1;
-			fresult = raw[0] * scale + offset;
+			fresult = raw[0] * pFmt->scale + pFmt->offset;
 			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		case sb:
@@ -590,17 +592,19 @@ int CWS_decode(unsigned char* raw, enum ws_types ws_type, float scale, float off
 			fresult = raw[0] & 0x7F;
 			if(raw[0] & 0x80)	// Test for sign bit
 				fresult -= fresult;	//negative value
-			fresult = fresult * scale + offset;
+			fresult = fresult * pFmt->scale + pFmt->offset;
 			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		case us:
 			m = 2;
-			fresult = CWS_unsigned_short(raw) * scale + offset;
+			fresult = CWS_unsigned_short(raw) * pFmt->scale
+				+ pFmt->offset;
 			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		case ss:
 			m = 2;
-			fresult = CWS_signed_short(raw) * scale + offset;
+			fresult = CWS_signed_short(raw) * pFmt->scale
+				+ pFmt->offset;
 			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		case dt:
@@ -627,30 +631,36 @@ int CWS_decode(unsigned char* raw, enum ws_types ws_type, float scale, float off
 			m = 3;
 			// wind average - 12 bits split across a byte and a nibble
 			fresult = raw[0] + ((raw[2] & 0x0F) * 256);
-			fresult = fresult * scale + offset;
+			fresult = fresult * pFmt->scale + pFmt->offset;
 			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		case wg:
 			m = 3;
 			// wind gust - 12 bits split across a byte and a nibble
 			fresult = raw[0] + ((raw[1] & 0xF0) * 16);
-			fresult = fresult * scale + offset;
+			fresult = fresult * pFmt->scale + pFmt->offset;
 			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		case dp:
 			m = 1; //error checking for delay
 			// Scale outside temperature and calculate dew point
-			fresult = CWS_dew_point(raw, scale, offset);
+			fresult = CWS_dew_point(raw, pFmt->scale, pFmt->offset);
+			n=sprintf(result,"%.*f", b, fresult);
+		break;
+		case wd:
+			m = raw[0] & 0xF0 ? -1 : 0;
+			fresult = raw[0] * pFmt->scale + pFmt->offset;
 			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		default:
-			MsgPrintf(0, "CWS_decode: Unknown type %u\n", ws_type);
+			MsgPrintf(0, "CWS_decode: Unknown type %u\n", pFmt->ws_type);
 	}
 	for(i=0; i<m; ++i) {
 		if(raw[i]!=0xFF) return n;
 	}
 	if(m) {
-		MsgPrintf(0, "CWS_decode: invalid value at 0x%04X\n", raw);
+		MsgPrintf(0, "CWS_decode: invalid value at 0x%04X (%s)\n",
+			raw, pFmt->name);
 		sprintf(result,"--.-");
 		n = 0;
 	}
@@ -678,7 +688,7 @@ int CWS_Read()
 	unsigned short	current_pos= CWS_unsigned_short(&m_buf[WS_CURRENT_POS]);
 	unsigned short	i;
 
-	if(current_pos%WS_BUFFER_RECORD) {
+	if((current_pos%WS_BUFFER_RECORD)||(current_pos<WS_BUFFER_START)) {
 		MsgPrintf(0, "CWS_Read: wrong current_pos=0x%04X\n", current_pos);
 		exit(1);
 	}
@@ -769,11 +779,7 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 					int pos = ws3600_format[j].pos;
 					if(pos<WS_BUFFER_RECORD)	//record or fixed block?
 						pos += current_pos;	//record
-					CWS_decode(&m_buf[pos],
-							ws3600_format[j].ws_type,
-							ws3600_format[j].scale,
-							ws3600_format[j].offset,
-							s2);
+					CWS_decode(&m_buf[pos], &ws3600_format[j], s2);
 					sprintf(s1+strlen(s1), "%s %s\n", ws3600_format[j].name, s2);
 				};
 			break;
@@ -790,11 +796,7 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 						pos += current_pos;	//record
 					if(FileIsEmpty)
 						fprintf(f, " %s", ws3600_format[j].name);
-					CWS_decode(&m_buf[pos],
-							ws3600_format[j].ws_type,
-							ws3600_format[j].scale,
-							ws3600_format[j].offset,
-							s2);
+					CWS_decode(&m_buf[pos], &ws3600_format[j], s2);
 					sprintf(s1+strlen(s1), " %s", s2);
 				};
 				if(FileIsEmpty) { fputs("\n", f); FileIsEmpty = 0; }
@@ -804,9 +806,7 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 				n=strftime(s1,100,"%Y-%m-%d %H:%M:%S", gmtime(&timestamp));
 				for (j=0;j<WS_PYWWS_RECORDS;j++) {
 					CWS_decode(&m_buf[current_pos+pywws_format[j].pos],
-							pywws_format[j].ws_type,
-							pywws_format[j].scale,
-							0.0,
+							&pywws_format[j],
 							s2);
 					sprintf(s1+strlen(s1), ",%s", s2);
 				};
@@ -821,15 +821,11 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 				for (j=0;j<WS_PWS_RECORDS;j++) {
 					if (j==WS_PWS_HOURLY_RAIN || j==WS_PWS_DAILY_RAIN) {
 						CWS_decode(&m_buf[pws_format[j].pos],
-								pws_format[j].ws_type,
-								pws_format[j].scale,
-								pws_format[j].offset,
+								&pws_format[j],
 								s2);
 					} else {
 						CWS_decode(&m_buf[current_pos+pws_format[j].pos],
-								pws_format[j].ws_type,
-								pws_format[j].scale,
-								pws_format[j].offset,
+								&pws_format[j],
 								s2);
 					}
 					sprintf(s1+strlen(s1), "&%s=%s", pws_format[j].name, s2);
@@ -845,15 +841,11 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 				for (j=0;j<WS_WUG_RECORDS;j++) {
 					if (j==WS_WUG_HOURLY_RAIN || j==WS_WUG_DAILY_RAIN) {
 						CWS_decode(&m_buf[wug_format[j].pos],
-								wug_format[j].ws_type,
-								wug_format[j].scale,
-								wug_format[j].offset,
+								&wug_format[j],
 								s2);
 					} else {
 						CWS_decode(&m_buf[wug_format[j].pos+current_pos],
-								wug_format[j].ws_type,
-								wug_format[j].scale,
-								wug_format[j].offset,
+								&wug_format[j],
 								s2);
 					}
 					sprintf(s1+strlen(s1), "&%s=%s", wug_format[j].name, s2);
@@ -864,9 +856,7 @@ int CWF_Write(char arg, const char* fname, const char* ftype)
 				n=strftime(s1,100,"  <wsd date=\"%Y-%m-%d %H:%M:%S\"", gmtime(&timestamp));
 				for (j=0;j<WS_RECORDS;j++) {
 					CWS_decode(&m_buf[current_pos+ws_format[j].pos],
-							ws_format[j].ws_type,
-							ws_format[j].scale,
-							0.0,
+							&ws_format[j],
 							s2);
 					sprintf(s1+strlen(s1), " %s=\"%s\"", ws_format[j].name, s2);
 				};
